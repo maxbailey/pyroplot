@@ -49,6 +49,7 @@ interface AnnotationRecord {
   sourceId: string;
   fillLayerId: string;
   lineLayerId: string;
+  extrusionLayerId?: string;
 }
 
 interface AudienceRecord {
@@ -81,6 +82,7 @@ export function MapShell() {
   const [basemapMode, setBasemapMode] = useState<"standard" | "satellite">(
     "standard"
   );
+  const [showHeight, setShowHeight] = useState(false);
 
   const annotationPalette = useMemo<AnnotationItem[]>(
     () => [
@@ -263,6 +265,9 @@ export function MapShell() {
           },
         });
         annotationsRef.current[rec.id] = rec;
+        if (showHeight) {
+          addExtrusionForAnnotation(rec);
+        }
       }
     };
     map.once("style.load", applyConfig);
@@ -602,6 +607,12 @@ export function MapShell() {
     if (!map) return;
     const rec = annotationsRef.current[id];
     if (!rec) return;
+    // remove extrusion if present
+    try {
+      if (rec.extrusionLayerId && map.getLayer(rec.extrusionLayerId)) {
+        map.removeLayer(rec.extrusionLayerId);
+      }
+    } catch {}
     try {
       rec.marker.remove();
     } catch {}
@@ -631,6 +642,40 @@ export function MapShell() {
       rec.cornerMarkers.forEach((cm) => cm.remove());
     } catch {}
     delete audienceAreasRef.current[id];
+  }
+
+  function addExtrusionForAnnotation(rec: AnnotationRecord) {
+    const map = mapRef.current;
+    if (!map) return;
+    const extrudeId = `${rec.id}-extrude`;
+    const heightFeet = rec.inches * 100;
+    const heightMeters = feetToMeters(heightFeet);
+    try {
+      if (!map.getLayer(extrudeId)) {
+        map.addLayer({
+          id: extrudeId,
+          type: "fill-extrusion",
+          source: rec.sourceId,
+          paint: {
+            "fill-extrusion-color": rec.color,
+            "fill-extrusion-height": heightMeters,
+            "fill-extrusion-opacity": 0.4,
+          },
+        });
+      }
+      rec.extrusionLayerId = extrudeId;
+    } catch {}
+  }
+
+  function removeExtrusionForAnnotation(rec: AnnotationRecord) {
+    const map = mapRef.current;
+    if (!map) return;
+    try {
+      if (rec.extrusionLayerId && map.getLayer(rec.extrusionLayerId)) {
+        map.removeLayer(rec.extrusionLayerId);
+      }
+    } catch {}
+    rec.extrusionLayerId = undefined;
   }
 
   function handleMapDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -898,6 +943,9 @@ export function MapShell() {
       fillLayerId: circleId,
       lineLayerId: lineId,
     };
+    if (showHeight) {
+      addExtrusionForAnnotation(annotationsRef.current[circleId]!);
+    }
     // Keep circle in sync when marker is dragged
     const updateCircle = () => {
       const pos = marker.getLngLat();
@@ -930,6 +978,9 @@ export function MapShell() {
     for (const key of Object.keys(annotationsRef.current)) {
       const rec = annotationsRef.current[key];
       try {
+        if (rec.extrusionLayerId && map.getLayer(rec.extrusionLayerId)) {
+          map.removeLayer(rec.extrusionLayerId);
+        }
         if (map.getLayer(rec.fillLayerId)) map.removeLayer(rec.fillLayerId);
         if (map.getLayer(rec.lineLayerId)) map.removeLayer(rec.lineLayerId);
         if (map.getSource(rec.sourceId)) map.removeSource(rec.sourceId);
@@ -1120,6 +1171,26 @@ export function MapShell() {
               className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
             >
               Reset Camera
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowHeight((prev) => {
+                  const next = !prev;
+                  const map = mapRef.current;
+                  if (!map) return next;
+                  // apply or remove on all existing annotations
+                  for (const key of Object.keys(annotationsRef.current)) {
+                    const rec = annotationsRef.current[key]!;
+                    if (next) addExtrusionForAnnotation(rec);
+                    else removeExtrusionForAnnotation(rec);
+                  }
+                  return next;
+                });
+              }}
+              className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+            >
+              {showHeight ? "Hide Height" : "Show Height"}
             </button>
           </div>
         </div>
