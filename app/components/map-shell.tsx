@@ -498,14 +498,6 @@ export function MapShell() {
     } as Feature<Polygon>;
   }
 
-  function getMetersPerPixel(lat: number, zoom: number) {
-    const R = 6378137;
-    return (
-      (Math.cos((lat * Math.PI) / 180) * 2 * Math.PI * R) /
-      (512 * Math.pow(2, zoom))
-    );
-  }
-
   function pointInPoly(
     px: { x: number; y: number },
     poly: { x: number; y: number }[]
@@ -550,7 +542,6 @@ export function MapShell() {
   ) {
     if (!mapRef.current) return;
     const map = mapRef.current;
-    const centerLng = (corners[0][0] + corners[2][0]) / 2;
     const centerLat = (corners[0][1] + corners[2][1]) / 2;
     const zoom = map.getZoom();
     const mpp = getMetersPerPixel(centerLat, zoom);
@@ -604,6 +595,42 @@ export function MapShell() {
         } catch {}
       }
     }
+  }
+
+  function removeFireworkAnnotation(id: string) {
+    const map = mapRef.current;
+    if (!map) return;
+    const rec = annotationsRef.current[id];
+    if (!rec) return;
+    try {
+      rec.marker.remove();
+    } catch {}
+    try {
+      if (map.getLayer(rec.fillLayerId)) map.removeLayer(rec.fillLayerId);
+      if (map.getLayer(rec.lineLayerId)) map.removeLayer(rec.lineLayerId);
+      if (map.getSource(rec.sourceId)) map.removeSource(rec.sourceId);
+    } catch {}
+    annotationMarkersRef.current = annotationMarkersRef.current.filter(
+      (m) => m !== rec.marker
+    );
+    delete annotationsRef.current[id];
+  }
+
+  function removeAudienceArea(id: string) {
+    const map = mapRef.current;
+    if (!map) return;
+    const rec = audienceAreasRef.current[id];
+    if (!rec) return;
+    try {
+      if (map.getLayer(rec.fillLayerId)) map.removeLayer(rec.fillLayerId);
+      if (map.getLayer(rec.lineLayerId)) map.removeLayer(rec.lineLayerId);
+      if (map.getSource(rec.sourceId)) map.removeSource(rec.sourceId);
+    } catch {}
+    try {
+      rec.labelMarker.remove();
+      rec.cornerMarkers.forEach((cm) => cm.remove());
+    } catch {}
+    delete audienceAreasRef.current[id];
   }
 
   function handleMapDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -669,6 +696,10 @@ export function MapShell() {
       const label = document.createElement("div");
       label.className =
         "rounded-md px-2 py-1 text-xs shadow bg-background/95 border border-border";
+      label.addEventListener("contextmenu", (evt) => {
+        evt.preventDefault();
+        removeAudienceArea(id);
+      });
       const title = document.createElement("div");
       title.className = "font-medium leading-none";
       title.textContent = "Audience";
@@ -823,6 +854,11 @@ export function MapShell() {
     const circleId = `circle-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2)}`;
+    // right-click on label removes the entire annotation
+    labelEl.addEventListener("contextmenu", (evt) => {
+      evt.preventDefault();
+      removeFireworkAnnotation(circleId);
+    });
     const sourceId = `${circleId}-src`;
     const feature = createCircleFeature(lngLat.lng, lngLat.lat, radiusMeters);
 
@@ -1076,7 +1112,7 @@ export function MapShell() {
                 mapRef.current.easeTo({
                   center: mapRef.current.getCenter(),
                   zoom: mapRef.current.getZoom(),
-                  pitch: 20,
+                  pitch: 30,
                   bearing: 0,
                   duration: 600,
                 });
