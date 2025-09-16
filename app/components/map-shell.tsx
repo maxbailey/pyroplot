@@ -51,7 +51,15 @@ interface AnnotationRecord {
   lineLayerId: string;
 }
 
-// duplicate removed
+interface AudienceRecord {
+  id: string;
+  sourceId: string;
+  fillLayerId: string;
+  lineLayerId: string;
+  labelMarker: mapboxgl.Marker;
+  cornerMarkers: mapboxgl.Marker[];
+  corners: [number, number][];
+}
 
 export function MapShell() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -65,6 +73,7 @@ export function MapShell() {
   const sessionTokenRef = useRef<string | null>(null);
   const annotationMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const annotationsRef = useRef<Record<string, AnnotationRecord>>({});
+  const audienceAreasRef = useRef<Record<string, AudienceRecord>>({});
   // Reset dialog is controlled by Radix internally via Dialog primitives
   const [lightPreset, setLightPreset] = useState<"night" | "dusk" | "day">(
     "dusk"
@@ -84,17 +93,18 @@ export function MapShell() {
         inches: 1.75,
         color: "#06b6d4",
       },
-      { key: "shell-2", label: '2" Shells', inches: 2, color: "#0ea5e9" },
-      { key: "shell-2-5", label: '2.5" Shells', inches: 2.5, color: "#a855f7" },
-      { key: "shell-3", label: '3" Shells', inches: 3, color: "#f43f5e" },
-      { key: "shell-4", label: '4" Shells', inches: 4, color: "#84cc16" },
-      { key: "shell-5", label: '5" Shells', inches: 5, color: "#10b981" },
-      { key: "shell-6", label: '6" Shells', inches: 6, color: "#14b8a6" },
-      { key: "shell-7", label: '7" Shells', inches: 7, color: "#3b82f6" },
-      { key: "shell-8", label: '8" Shells', inches: 8, color: "#a78bfa" },
-      { key: "shell-10", label: '10" Shells', inches: 10, color: "#f59e0b" },
-      { key: "shell-12", label: '12" Shells', inches: 12, color: "#eab308" },
-      { key: "shell-16", label: '16" Shells', inches: 16, color: "#ef4444" },
+      { key: "shell-2", label: '2" Shells', inches: 2, color: "#ff0000" },
+      { key: "shell-2-5", label: '2.5" Shells', inches: 2.5, color: "#ff0000" },
+      { key: "shell-3", label: '3" Shells', inches: 3, color: "#ff0000" },
+      { key: "shell-4", label: '4" Shells', inches: 4, color: "#ff0000" },
+      { key: "shell-5", label: '5" Shells', inches: 5, color: "#ff0000" },
+      { key: "shell-6", label: '6" Shells', inches: 6, color: "#ff0000" },
+      { key: "shell-7", label: '7" Shells', inches: 7, color: "#ff0000" },
+      { key: "shell-8", label: '8" Shells', inches: 8, color: "#ff0000" },
+      { key: "shell-10", label: '10" Shells', inches: 10, color: "#ff0000" },
+      { key: "shell-12", label: '12" Shells', inches: 12, color: "#ff0000" },
+      { key: "shell-16", label: '16" Shells', inches: 16, color: "#ff0000" },
+      { key: "audience", label: "Audience", inches: 0, color: "#60a5fa" },
     ],
     []
   );
@@ -218,10 +228,7 @@ export function MapShell() {
           map.setFog(undefined as unknown as mapboxgl.FogSpecification);
         } catch {}
       }
-    };
-    map.once("style.load", () => {
-      applyConfig();
-      // Re-add existing annotation circles after style change to keep them in sync
+      // Re-add existing annotation circles after style change
       const existing: Record<string, AnnotationRecord> = {
         ...(annotationsRef.current || {}),
       };
@@ -257,7 +264,8 @@ export function MapShell() {
         });
         annotationsRef.current[rec.id] = rec;
       }
-    });
+    };
+    map.once("style.load", applyConfig);
     return () => {
       map.off("style.load", applyConfig);
     };
@@ -424,6 +432,33 @@ export function MapShell() {
     return feet * 0.3048;
   }
 
+  function metersToFeet(meters: number) {
+    return meters / 0.3048;
+  }
+
+  function getMetersPerPixel(lat: number, zoom: number) {
+    const R = 6378137;
+    return (
+      (Math.cos((lat * Math.PI) / 180) * 2 * Math.PI * R) /
+      (512 * Math.pow(2, zoom))
+    );
+  }
+
+  function normalizeCorners(input: [number, number][]): [number, number][] {
+    const lngs = input.map((c) => c[0]);
+    const lats = input.map((c) => c[1]);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    return [
+      [minLng, minLat], // SW
+      [maxLng, minLat], // SE
+      [maxLng, maxLat], // NE
+      [minLng, maxLat], // NW
+    ];
+  }
+
   function createCircleFeature(
     lng: number,
     lat: number,
@@ -451,6 +486,126 @@ export function MapShell() {
     } as Feature<Polygon>;
   }
 
+  function createRectangleFeature(
+    corners: [number, number][]
+  ): Feature<Polygon> {
+    // corners should be in [lng, lat] order and form a rectangle
+    const ring = [...corners, corners[0]] as [number, number][];
+    return {
+      type: "Feature",
+      geometry: { type: "Polygon", coordinates: [ring] },
+      properties: {},
+    } as Feature<Polygon>;
+  }
+
+  function getMetersPerPixel(lat: number, zoom: number) {
+    const R = 6378137;
+    return (
+      (Math.cos((lat * Math.PI) / 180) * 2 * Math.PI * R) /
+      (512 * Math.pow(2, zoom))
+    );
+  }
+
+  function pointInPoly(
+    px: { x: number; y: number },
+    poly: { x: number; y: number }[]
+  ) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x,
+        yi = poly[i].y;
+      const xj = poly[j].x,
+        yj = poly[j].y;
+      const intersect =
+        yi > px.y !== yj > px.y &&
+        px.x < ((xj - xi) * (px.y - yi)) / (yj - yi) + xi;
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function distPointToSegment(
+    px: { x: number; y: number },
+    a: { x: number; y: number },
+    b: { x: number; y: number }
+  ) {
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const wx = px.x - a.x;
+    const wy = px.y - a.y;
+    const c1 = vx * wx + vy * wy;
+    if (c1 <= 0) return Math.hypot(px.x - a.x, px.y - a.y);
+    const c2 = vx * vx + vy * vy;
+    if (c2 <= c1) return Math.hypot(px.x - b.x, px.y - b.y);
+    const t = c1 / c2;
+    const projx = a.x + t * vx;
+    const projy = a.y + t * vy;
+    return Math.hypot(px.x - projx, px.y - projy);
+  }
+
+  function updateAudienceClearanceForCorners(
+    labelNode: HTMLDivElement,
+    subNode: HTMLDivElement,
+    corners: [number, number][]
+  ) {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+    const centerLng = (corners[0][0] + corners[2][0]) / 2;
+    const centerLat = (corners[0][1] + corners[2][1]) / 2;
+    const zoom = map.getZoom();
+    const mpp = getMetersPerPixel(centerLat, zoom);
+    const rectPx = corners.map(([lng, lat]) => map.project({ lng, lat }));
+
+    let minDeltaMeters = Infinity;
+    const overlapping: Set<string> = new Set();
+
+    for (const key of Object.keys(annotationsRef.current)) {
+      const rec = annotationsRef.current[key];
+      const cLL = rec.marker.getLngLat();
+      const cPx = map.project(cLL);
+      const radiusMeters = feetToMeters(rec.inches * 70);
+      const radiusPx = radiusMeters / mpp;
+      const centerInRect = pointInPoly(cPx, rectPx);
+      let minDistPx = Infinity;
+      for (let i = 0; i < rectPx.length; i++) {
+        const a = rectPx[i];
+        const b = rectPx[(i + 1) % rectPx.length];
+        const d = distPointToSegment(cPx, a, b);
+        if (d < minDistPx) minDistPx = d;
+      }
+      const deltaPx = (centerInRect ? 0 : minDistPx) - radiusPx;
+      const deltaMeters = deltaPx * mpp;
+      if (deltaMeters < minDeltaMeters) minDeltaMeters = deltaMeters;
+      if (deltaMeters < 0) overlapping.add(key);
+    }
+
+    const deltaFeet = Math.round(minDeltaMeters / 0.3048);
+    subNode.textContent = `${deltaFeet} ft from closest fallout zone`;
+    if (minDeltaMeters < 0) {
+      labelNode.classList.add("bg-destructive", "text-destructive-foreground");
+      for (const key of Object.keys(annotationsRef.current)) {
+        const rec = annotationsRef.current[key];
+        const opacity = overlapping.has(key) ? 1 : 0.1;
+        try {
+          map.setPaintProperty(rec.fillLayerId, "fill-opacity", 0.25 * opacity);
+          map.setPaintProperty(rec.lineLayerId, "line-opacity", opacity);
+        } catch {}
+      }
+    } else {
+      labelNode.classList.remove(
+        "bg-destructive",
+        "text-destructive-foreground"
+      );
+      for (const key of Object.keys(annotationsRef.current)) {
+        const rec = annotationsRef.current[key];
+        try {
+          map.setPaintProperty(rec.fillLayerId, "fill-opacity", 0.25);
+          map.setPaintProperty(rec.lineLayerId, "line-opacity", 1);
+        } catch {}
+      }
+    }
+  }
+
   function handleMapDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     if (!mapRef.current) return;
@@ -471,6 +626,180 @@ export function MapShell() {
       number
     ];
     const lngLat = mapRef.current.unproject(point);
+    if (item.key === "audience") {
+      // Create audience rectangle default ~ 100ft x 60ft
+      const widthFt = 200;
+      const heightFt = 90;
+      const metersW = feetToMeters(widthFt);
+      const metersH = feetToMeters(heightFt);
+      const metersToLng = (m: number, lat: number) =>
+        m / (111320 * Math.cos((lat * Math.PI) / 180));
+      const metersToLat = (m: number) => m / 110540;
+      const lngW = metersToLng(metersW, lngLat.lat);
+      const latH = metersToLat(metersH);
+      let corners: [number, number][] = [
+        [lngLat.lng - lngW / 2, lngLat.lat - latH / 2],
+        [lngLat.lng + lngW / 2, lngLat.lat - latH / 2],
+        [lngLat.lng + lngW / 2, lngLat.lat + latH / 2],
+        [lngLat.lng - lngW / 2, lngLat.lat + latH / 2],
+      ];
+      const rectFeature = createRectangleFeature(corners);
+      const id = `aud-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const sourceId = `${id}-src`;
+      mapRef.current.addSource(sourceId, {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [rectFeature],
+        } as FeatureCollection,
+      });
+      mapRef.current.addLayer({
+        id: `${id}-fill`,
+        type: "fill",
+        source: sourceId,
+        paint: { "fill-color": item.color, "fill-opacity": 0.2 },
+      });
+      mapRef.current.addLayer({
+        id: `${id}-line`,
+        type: "line",
+        source: sourceId,
+        paint: { "line-color": item.color, "line-opacity": 1, "line-width": 2 },
+      });
+      // Label marker centered
+      const label = document.createElement("div");
+      label.className =
+        "rounded-md px-2 py-1 text-xs shadow bg-background/95 border border-border";
+      const title = document.createElement("div");
+      title.className = "font-medium leading-none";
+      title.textContent = "Audience";
+      const dims = document.createElement("div");
+      dims.className = "text-[10px] text-muted-foreground";
+      const widthFeetText = Math.round(widthFt);
+      const heightFeetText = Math.round(heightFt);
+      dims.textContent = `${widthFeetText}ft × ${heightFeetText}ft`;
+      label.appendChild(title);
+      label.appendChild(dims);
+      const centerLng = (corners[0][0] + corners[2][0]) / 2;
+      const centerLat = (corners[0][1] + corners[2][1]) / 2;
+      const labelMarker = new mapboxgl.Marker({
+        element: label,
+        draggable: true,
+      })
+        .setLngLat([centerLng, centerLat])
+        .addTo(mapRef.current);
+      // Dragging the label moves the whole rectangle
+      const onLabelDrag = () => {
+        const cur = labelMarker.getLngLat();
+        const dLng = cur.lng - (corners[0][0] + corners[2][0]) / 2;
+        const dLat = cur.lat - (corners[0][1] + corners[2][1]) / 2;
+        const movedCorners: [number, number][] = corners.map(([lng, lat]) => [
+          lng + dLng,
+          lat + dLat,
+        ]);
+        // keep size exact; only translate, then enforce min size to avoid later clamping jumps
+        const updated = createRectangleFeature(movedCorners);
+        const src = mapRef.current!.getSource(
+          sourceId
+        ) as mapboxgl.GeoJSONSource;
+        src.setData({
+          type: "FeatureCollection",
+          features: [updated],
+        } as FeatureCollection);
+        // move corner markers
+        movedCorners.forEach((c, i) => cornerMarkers[i].setLngLat(c));
+        // update corners reference
+        corners = movedCorners;
+        audienceAreasRef.current[id].corners = movedCorners;
+        // keep label centered (already at cur), and update dims text to current size
+        const centerLatNow = (movedCorners[0][1] + movedCorners[2][1]) / 2;
+        const metersWNow =
+          Math.abs(movedCorners[1][0] - movedCorners[0][0]) *
+          111320 *
+          Math.cos((centerLatNow * Math.PI) / 180);
+        const metersHNow =
+          Math.abs(movedCorners[3][1] - movedCorners[0][1]) * 110540;
+        dims.textContent = `${Math.round(
+          metersToFeet(metersWNow)
+        )}ft × ${Math.round(metersToFeet(metersHNow))}ft`;
+      };
+      labelMarker.on("drag", onLabelDrag);
+      labelMarker.on("dragend", onLabelDrag);
+      const cornerMarkers: mapboxgl.Marker[] = corners.map((c, idx) => {
+        const cm = new mapboxgl.Marker({ draggable: true })
+          .setLngLat(c)
+          .addTo(mapRef.current!);
+        const updateRect = () => {
+          // axis-aligned rectangle resize with diagonal anchor, clamped min size, no inversion
+          const cur = cm.getLngLat();
+          const oppIdx = (idx + 2) % 4;
+          const anchorLng = corners[oppIdx][0];
+          const anchorLat = corners[oppIdx][1];
+          const minFt = 20;
+          const minLngDelta =
+            feetToMeters(minFt) /
+            (111320 * Math.cos((anchorLat * Math.PI) / 180));
+          const minLatDelta = feetToMeters(minFt) / 110540;
+          const sLng = idx === 0 || idx === 3 ? -1 : 1;
+          const sLat = idx === 0 || idx === 1 ? -1 : 1;
+          let dragLng = cur.lng;
+          let dragLat = cur.lat;
+          if (sLng > 0) dragLng = Math.max(anchorLng + minLngDelta, dragLng);
+          else dragLng = Math.min(anchorLng - minLngDelta, dragLng);
+          if (sLat > 0) dragLat = Math.max(anchorLat + minLatDelta, dragLat);
+          else dragLat = Math.min(anchorLat - minLatDelta, dragLat);
+          let newCorners: [number, number][] = [...corners] as [
+            number,
+            number
+          ][];
+          newCorners[oppIdx] = [anchorLng, anchorLat];
+          newCorners[idx] = [dragLng, dragLat];
+          newCorners[(idx + 1) % 4] = [dragLng, anchorLat];
+          newCorners[(idx + 3) % 4] = [anchorLng, dragLat];
+          // normalize to SW,SE,NE,NW to prevent index drift and dimension misreads
+          newCorners = normalizeCorners(newCorners);
+          corners = newCorners;
+          const updated = createRectangleFeature(corners);
+          const src = mapRef.current!.getSource(
+            sourceId
+          ) as mapboxgl.GeoJSONSource;
+          src.setData({
+            type: "FeatureCollection",
+            features: [updated],
+          } as FeatureCollection);
+          // update label position
+          const newCenterLng = (corners[0][0] + corners[2][0]) / 2;
+          const newCenterLat = (corners[0][1] + corners[2][1]) / 2;
+          labelMarker.setLngLat([newCenterLng, newCenterLat]);
+          // update dims text
+          const metersW =
+            Math.abs(corners[1][0] - corners[0][0]) *
+            111320 *
+            Math.cos((newCenterLat * Math.PI) / 180);
+          const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
+          dims.textContent = `${Math.round(
+            metersToFeet(metersW)
+          )}ft × ${Math.round(metersToFeet(metersH))}ft`;
+          audienceAreasRef.current[id].corners = corners;
+          // move all corner pins in realtime to their new corners
+          corners.forEach((p, i) => cornerMarkers[i].setLngLat(p));
+        };
+        cm.on("drag", updateRect);
+        cm.on("dragend", updateRect);
+        return cm;
+      });
+      audienceAreasRef.current[id] = {
+        id,
+        sourceId,
+        fillLayerId: `${id}-fill`,
+        lineLayerId: `${id}-line`,
+        labelMarker,
+        cornerMarkers,
+        corners,
+      };
+      return;
+    }
+
+    // Firework-type marker and label
     const labelEl = document.createElement("div");
     labelEl.className =
       "rounded-md bg-background/95 text-foreground shadow-lg border border-border px-2 py-1 text-xs";
@@ -571,6 +900,18 @@ export function MapShell() {
       } catch {}
     }
     annotationsRef.current = {};
+    // Remove audience rectangles
+    for (const key of Object.keys(audienceAreasRef.current)) {
+      const rec = audienceAreasRef.current[key];
+      try {
+        if (map.getLayer(rec.fillLayerId)) map.removeLayer(rec.fillLayerId);
+        if (map.getLayer(rec.lineLayerId)) map.removeLayer(rec.lineLayerId);
+        if (map.getSource(rec.sourceId)) map.removeSource(rec.sourceId);
+        rec.labelMarker.remove();
+        rec.cornerMarkers.forEach((cm) => cm.remove());
+      } catch {}
+    }
+    audienceAreasRef.current = {};
   }
 
   return (
@@ -710,16 +1051,40 @@ export function MapShell() {
                   e.dataTransfer.effectAllowed = "copy";
                   e.dataTransfer.setData(
                     "text/plain",
-                    JSON.stringify({ key: a.key, glyph: "📍" })
+                    JSON.stringify({
+                      key: a.key,
+                      glyph: a.key === "audience" ? "👥" : "📍",
+                    })
                   );
                 }}
                 className="h-9 w-full grid grid-cols-[20px_1fr] items-center gap-2 rounded-md border border-border bg-background hover:bg-muted px-2 text-xs"
                 type="button"
               >
-                <span>📍</span>
+                <span>{a.key === "audience" ? "👥" : "📍"}</span>
                 <span className="truncate">{a.label}</span>
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="pt-4 border-t border-border">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (!mapRef.current) return;
+                mapRef.current.easeTo({
+                  center: mapRef.current.getCenter(),
+                  zoom: mapRef.current.getZoom(),
+                  pitch: 20,
+                  bearing: 0,
+                  duration: 600,
+                });
+              }}
+              className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+            >
+              Reset Camera
+            </button>
           </div>
         </div>
 
@@ -731,13 +1096,13 @@ export function MapShell() {
                   type="button"
                   className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
                 >
-                  Reset
+                  Clear Annotations
                 </button>
               </DialogTrigger>
             </div>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Reset annotations?</DialogTitle>
+                <DialogTitle>Clear annotations?</DialogTitle>
                 <DialogDescription>
                   This will remove all annotations you have added to the map.
                 </DialogDescription>
@@ -757,7 +1122,7 @@ export function MapShell() {
                     onClick={() => clearAllAnnotations()}
                     className="inline-flex items-center justify-center rounded-md bg-destructive text-destructive-foreground px-3 py-2 text-sm hover:opacity-90"
                   >
-                    Confirm reset
+                    Confirm clear
                   </button>
                 </DialogClose>
               </DialogFooter>
