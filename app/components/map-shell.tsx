@@ -44,76 +44,26 @@ export function MapShell() {
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: "mapbox://styles/mapbox/satellite-streets-v12",
+      style: "mapbox://styles/mapbox/standard",
       center: [-98.5795, 39.8283],
       zoom: 3,
+      pitch: 20,
+      bearing: 0,
+      antialias: true,
       attributionControl: false,
     });
 
     mapRef.current = map;
 
     map.on("load", () => {
-      // Night atmosphere
+      // Configure Mapbox Standard: night preset + 3D objects
       try {
-        map.setFog({
-          color: "rgb(11, 11, 25)",
-          "horizon-blend": 0.1,
-          "star-intensity": 0.6,
-          range: [0.8, 8],
-        } as any);
-        map.setLight({ color: "white", intensity: 0.2 } as any);
-      } catch {}
-
-      // 3D buildings layer
-      try {
-        const layers = map.getStyle().layers ?? [];
-        let labelLayerId: string | undefined;
-        for (const layer of layers) {
-          // @ts-expect-error layout is dynamic
-          if (
-            layer.type === "symbol" &&
-            layer.layout &&
-            layer.layout["text-field"]
-          ) {
-            labelLayerId = layer.id;
-            break;
-          }
-        }
-        if (!map.getLayer("add-3d-buildings")) {
-          map.addLayer(
-            {
-              id: "add-3d-buildings",
-              source: "composite",
-              "source-layer": "building",
-              filter: ["==", "extrude", "true"],
-              type: "fill-extrusion",
-              minzoom: 15,
-              paint: {
-                "fill-extrusion-color": "#aaa",
-                "fill-extrusion-height": [
-                  "interpolate",
-                  ["linear"],
-                  ["zoom"],
-                  15,
-                  0,
-                  15.05,
-                  ["get", "height"],
-                ],
-                "fill-extrusion-base": [
-                  "interpolate",
-                  ["linear"],
-                  ["zoom"],
-                  15,
-                  0,
-                  15.05,
-                  ["get", "min_height"],
-                ],
-                "fill-extrusion-opacity": 0.6,
-              },
-            } as any,
-            labelLayerId
-          );
-        }
+        // @ts-expect-error GL JS v3 Standard config API
+        map.setConfigProperty("basemap", "lightPreset", "night");
+        // @ts-expect-error GL JS v3 Standard config API
+        map.setConfigProperty("basemap", "show3dObjects", true);
+        // @ts-expect-error GL JS v3 Standard config API
+        map.setConfigProperty("basemap", "showTerrain", true);
       } catch {}
 
       setIsMapReady(true);
@@ -134,7 +84,9 @@ export function MapShell() {
         const { latitude, longitude } = pos.coords;
         mapRef.current!.flyTo({
           center: [longitude, latitude],
-          zoom: 12,
+          zoom: 16,
+          pitch: 30,
+          bearing: 0,
           essential: true,
         });
       },
@@ -285,7 +237,13 @@ export function MapShell() {
     }
 
     if (lngLat && mapRef.current) {
-      mapRef.current.flyTo({ center: lngLat, zoom: 13, essential: true });
+      mapRef.current.flyTo({
+        center: lngLat,
+        zoom: 16,
+        pitch: 30,
+        bearing: 0,
+        essential: true,
+      });
       // do not leave a pin for search results
       sessionTokenRef.current = crypto.randomUUID();
       setSuggestions([]);
