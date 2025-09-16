@@ -13,26 +13,9 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 // Removed slider; we switch whole styles for performance
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
-
-type MapWithStandard = mapboxgl.Map & {
-  setConfigProperty: (group: string, name: string, value: unknown) => void;
-};
 
 type AnnotationItem = {
   key: string;
@@ -76,12 +59,6 @@ export function MapShell() {
   const annotationsRef = useRef<Record<string, AnnotationRecord>>({});
   const audienceAreasRef = useRef<Record<string, AudienceRecord>>({});
   // Reset dialog is controlled by Radix internally via Dialog primitives
-  const [lightPreset, setLightPreset] = useState<"night" | "dusk" | "day">(
-    "dusk"
-  );
-  const [basemapMode, setBasemapMode] = useState<"standard" | "satellite">(
-    "standard"
-  );
   const [showHeight, setShowHeight] = useState(false);
 
   const annotationPalette = useMemo<AnnotationItem[]>(
@@ -116,7 +93,7 @@ export function MapShell() {
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: "mapbox://styles/mapbox/standard",
+      style: "mapbox://styles/mapbox/satellite-streets-v12",
       center: [-98.5795, 39.8283],
       zoom: 3,
       pitch: 20,
@@ -125,30 +102,18 @@ export function MapShell() {
       attributionControl: false,
     });
 
-    mapRef.current = map as MapWithStandard;
+    mapRef.current = map;
 
     map.on("load", () => {
-      // Configure Mapbox Standard: default dusk preset + 3D objects
       try {
-        if (basemapMode === "standard") {
-          (mapRef.current as MapWithStandard).setConfigProperty(
-            "basemap",
-            "lightPreset",
-            "dusk"
-          );
-          (mapRef.current as MapWithStandard).setConfigProperty(
-            "basemap",
-            "show3dObjects",
-            true
-          );
-          (mapRef.current as MapWithStandard).setConfigProperty(
-            "basemap",
-            "showTerrain",
-            true
-          );
-        }
+        map.setFog({
+          color: "#0b1220",
+          "high-color": "#0b1220",
+          "space-color": "#000010",
+          "horizon-blend": 0.2,
+          "star-intensity": 0,
+        } as mapboxgl.FogSpecification);
       } catch {}
-
       setIsMapReady(true);
     });
 
@@ -178,103 +143,7 @@ export function MapShell() {
     );
   }, [isMapReady]);
 
-  // React to preset changes (only in Standard mode)
-  useEffect(() => {
-    if (!mapRef.current) return;
-    if (basemapMode !== "standard") return;
-    try {
-      (mapRef.current as MapWithStandard).setConfigProperty(
-        "basemap",
-        "lightPreset",
-        lightPreset
-      );
-    } catch {}
-  }, [lightPreset, basemapMode]);
-
-  // Switch between Standard and Satellite styles
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const map = mapRef.current;
-    const center = map.getCenter();
-    const zoom = map.getZoom();
-    const pitch = map.getPitch();
-    const bearing = map.getBearing();
-    const style =
-      basemapMode === "standard"
-        ? "mapbox://styles/mapbox/standard"
-        : "mapbox://styles/mapbox/satellite-streets-v12";
-    map.setStyle(style);
-    const applyConfig = () => {
-      map.jumpTo({ center, zoom, pitch, bearing });
-      if (basemapMode === "standard") {
-        try {
-          (map as MapWithStandard).setConfigProperty(
-            "basemap",
-            "lightPreset",
-            lightPreset
-          );
-          (map as MapWithStandard).setConfigProperty(
-            "basemap",
-            "show3dObjects",
-            true
-          );
-          (map as MapWithStandard).setConfigProperty(
-            "basemap",
-            "showTerrain",
-            true
-          );
-        } catch {}
-      } else {
-        // Ensure no Standard-specific effects are left on Satellite
-        try {
-          map.setFog(undefined as unknown as mapboxgl.FogSpecification);
-        } catch {}
-      }
-      // Re-add existing annotation circles after style change
-      const existing: Record<string, AnnotationRecord> = {
-        ...(annotationsRef.current || {}),
-      };
-      annotationsRef.current = {} as Record<string, AnnotationRecord>;
-      for (const key of Object.keys(existing)) {
-        const rec = existing[key];
-        const pos = rec.marker.getLngLat();
-        const radiusFeet = rec.inches * 70;
-        const radiusMeters = feetToMeters(radiusFeet);
-        const feature = createCircleFeature(pos.lng, pos.lat, radiusMeters);
-        map.addSource(rec.sourceId, {
-          type: "geojson",
-          data: {
-            type: "FeatureCollection",
-            features: [feature],
-          } as FeatureCollection,
-        });
-        map.addLayer({
-          id: rec.fillLayerId,
-          type: "fill",
-          source: rec.sourceId,
-          paint: { "fill-color": rec.color, "fill-opacity": 0.25 },
-        });
-        map.addLayer({
-          id: rec.lineLayerId,
-          type: "line",
-          source: rec.sourceId,
-          paint: {
-            "line-color": rec.color,
-            "line-opacity": 1,
-            "line-width": 2,
-          },
-        });
-        annotationsRef.current[rec.id] = rec;
-        if (showHeight) {
-          addExtrusionForAnnotation(rec);
-        }
-      }
-    };
-    map.once("style.load", applyConfig);
-    return () => {
-      map.off("style.load", applyConfig);
-    };
-  }, [basemapMode, lightPreset]);
+  // Satellite-only: no style switching; Mapbox default fog/effects are used
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1005,56 +874,7 @@ export function MapShell() {
     <div className="h-screen w-screen flex">
       <aside className="w-[300px] shrink-0 border-r border-border p-4 space-y-4">
         <div className="text-xl font-semibold">Pyro Plot</div>
-        <div>
-          <label className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground">
-            Time of day
-          </label>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <Select
-                    value={lightPreset}
-                    onValueChange={(v: "night" | "dusk" | "day") =>
-                      setLightPreset(v)
-                    }
-                    disabled={basemapMode === "satellite"}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Dusk" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="dusk">Dusk</SelectItem>
-                      <SelectItem value="night">Night</SelectItem>
-                      <SelectItem value="day">Day</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </TooltipTrigger>
-              {basemapMode === "satellite" && (
-                <TooltipContent>Not available in Satellite View</TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
-        </div>
 
-        <div>
-          <label className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground">
-            Map Type
-          </label>
-          <Select
-            value={basemapMode}
-            onValueChange={(v: "standard" | "satellite") => setBasemapMode(v)}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="3D View" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="standard">3D View</SelectItem>
-              <SelectItem value="satellite">Satellite View</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
         <div>
           <form
             onSubmit={(e) => {
