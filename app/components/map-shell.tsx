@@ -491,11 +491,13 @@ export function MapShell() {
         const rec = audienceAreasRef.current[key]!;
         const c = rec.corners;
         const centerLng = (c[0][0] + c[2][0]) / 2;
-        const centerLat = (c[0][1] + c[2][1]) / 2;
-        // dimensions not needed for ID-only overlay label
+        const topLat = c[3][1]; // Use top edge (NW corner latitude)
+        // Position label at top edge with small offset down
+        const offsetLat = feetToMeters(10) / 110540; // 10 feet down from top
+        const labelLat = topLat - offsetLat;
         features.push({
           type: "Feature",
-          geometry: { type: "Point", coordinates: [centerLng, centerLat] },
+          geometry: { type: "Point", coordinates: [centerLng, labelLat] },
           properties: {
             id: String(rec.number),
             atype: "audience",
@@ -539,11 +541,13 @@ export function MapShell() {
         const rec = restrictedAreasRef.current[key]!;
         const c = rec.corners;
         const centerLng = (c[0][0] + c[2][0]) / 2;
-        const centerLat = (c[0][1] + c[2][1]) / 2;
-        // dimensions not needed for ID-only overlay label
+        const topLat = c[3][1]; // Use top edge (NW corner latitude)
+        // Position label at top edge with small offset down
+        const offsetLat = feetToMeters(10) / 110540; // 10 feet down from top
+        const labelLat = topLat - offsetLat;
         features.push({
           type: "Feature",
-          geometry: { type: "Point", coordinates: [centerLng, centerLat] },
+          geometry: { type: "Point", coordinates: [centerLng, labelLat] },
           properties: {
             id: String(rec.number),
             atype: "restricted",
@@ -584,12 +588,16 @@ export function MapShell() {
                     ["==", ["get", "atype"], "measurement"],
                     ["concat", ["get", "id"], " ft"],
                     ["==", ["get", "atype"], "restricted"],
-                    "",
+                    ["concat", "Restricted ", ["get", "id"]],
                     ["get", "id"],
                   ],
                   "text-size": [
                     "case",
                     ["==", ["get", "atype"], "measurement"],
+                    18,
+                    ["==", ["get", "atype"], "audience"],
+                    18,
+                    ["==", ["get", "atype"], "restricted"],
                     18,
                     28,
                   ],
@@ -2001,7 +2009,7 @@ export function MapShell() {
         id: `${id}-fill`,
         type: "fill",
         source: sourceId,
-        paint: { "fill-color": item.color, "fill-opacity": 0.2 },
+        paint: { "fill-color": item.color, "fill-opacity": 0.1 },
       });
       mapRef.current.addLayer({
         id: `${id}-line`,
@@ -2356,7 +2364,7 @@ export function MapShell() {
         id: `${id}-fill`,
         type: "fill",
         source: sourceId,
-        paint: { "fill-color": item.color, "fill-opacity": 0.2 },
+        paint: { "fill-color": item.color, "fill-opacity": 0.1 },
       });
       mapRef.current.addLayer({
         id: `${id}-line`,
