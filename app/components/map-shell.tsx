@@ -116,27 +116,27 @@ export function MapShell() {
 
   const annotationPalette = useMemo<AnnotationItem[]>(
     () => [
-      { key: "bore-1", label: '1" Bore', inches: 1, color: "#f97316" },
-      { key: "bore-1-2", label: '1.2" Bore', inches: 1.2, color: "#ef4444" },
-      { key: "bore-1-5", label: '1.5" Bore', inches: 1.5, color: "#22c55e" },
+      { key: "bore-1", label: '1" Bore', inches: 1, color: "#FF5126" },
+      { key: "bore-1-2", label: '1.2" Bore', inches: 1.2, color: "#FF5126" },
+      { key: "bore-1-5", label: '1.5" Bore', inches: 1.5, color: "#FF5126" },
       {
         key: "shell-1-75",
         label: '1.75" Shells',
         inches: 1.75,
-        color: "#06b6d4",
+        color: "#FF5126",
       },
-      { key: "shell-2", label: '2" Shells', inches: 2, color: "#ff0000" },
-      { key: "shell-2-5", label: '2.5" Shells', inches: 2.5, color: "#ff0000" },
-      { key: "shell-3", label: '3" Shells', inches: 3, color: "#ff0000" },
-      { key: "shell-4", label: '4" Shells', inches: 4, color: "#ff0000" },
-      { key: "shell-5", label: '5" Shells', inches: 5, color: "#ff0000" },
-      { key: "shell-6", label: '6" Shells', inches: 6, color: "#ff0000" },
-      { key: "shell-7", label: '7" Shells', inches: 7, color: "#ff0000" },
-      { key: "shell-8", label: '8" Shells', inches: 8, color: "#ff0000" },
-      { key: "shell-10", label: '10" Shells', inches: 10, color: "#ff0000" },
-      { key: "shell-12", label: '12" Shells', inches: 12, color: "#ff0000" },
-      { key: "shell-16", label: '16" Shells', inches: 16, color: "#ff0000" },
-      { key: "audience", label: "Audience", inches: 0, color: "#60a5fa" },
+      { key: "shell-2", label: '2" Shells', inches: 2, color: "#FF5126" },
+      { key: "shell-2-5", label: '2.5" Shells', inches: 2.5, color: "#FF5126" },
+      { key: "shell-3", label: '3" Shells', inches: 3, color: "#FF5126" },
+      { key: "shell-4", label: '4" Shells', inches: 4, color: "#FF5126" },
+      { key: "shell-5", label: '5" Shells', inches: 5, color: "#FF5126" },
+      { key: "shell-6", label: '6" Shells', inches: 6, color: "#FF5126" },
+      { key: "shell-7", label: '7" Shells', inches: 7, color: "#FF5126" },
+      { key: "shell-8", label: '8" Shells', inches: 8, color: "#FF5126" },
+      { key: "shell-10", label: '10" Shells', inches: 10, color: "#FF5126" },
+      { key: "shell-12", label: '12" Shells', inches: 12, color: "#FF5126" },
+      { key: "shell-16", label: '16" Shells', inches: 16, color: "#FF5126" },
+      { key: "audience", label: "Audience", inches: 0, color: "#0077FF" },
     ],
     []
   );
@@ -367,14 +367,39 @@ export function MapShell() {
   // removed unused getMetersPerPixel helper
 
   async function loadJsPDF(): Promise<JsPdfConstructor> {
-    if (window.jspdf?.jsPDF) return window.jspdf.jsPDF;
+    if (window.jspdf?.jsPDF) {
+      console.info("[siteplan] jsPDF already available");
+      return window.jspdf.jsPDF;
+    }
+    console.info("[siteplan] injecting jsPDF script...");
     await new Promise<void>((resolve, reject) => {
       const existing = document.querySelector<HTMLScriptElement>(
         'script[data-lib="jspdf"]'
       );
       if (existing) {
-        existing.addEventListener("load", () => resolve());
-        existing.addEventListener("error", () => reject());
+        // If script tag exists and jsPDF is already available, resolve immediately
+        if (window.jspdf?.jsPDF) {
+          console.info("[siteplan] existing jsPDF detected (fast-path)");
+          resolve();
+          return;
+        }
+        // If the script is already loaded, resolve; otherwise, attach listeners
+        const rs = (existing as unknown as { readyState?: string }).readyState;
+        if (rs === "complete") {
+          console.info("[siteplan] existing script readyState=complete");
+          resolve();
+          return;
+        }
+        existing.addEventListener("load", () => {
+          console.info("[siteplan] existing jsPDF script load event");
+          resolve();
+        });
+        existing.addEventListener("error", () => {
+          console.error("[siteplan] existing jsPDF script error");
+          reject();
+        });
+        // Fallback in case load already fired before listeners were attached
+        setTimeout(() => resolve(), 1000);
         return;
       }
       const script = document.createElement("script");
@@ -383,10 +408,17 @@ export function MapShell() {
       script.async = true;
       script.defer = true;
       script.setAttribute("data-lib", "jspdf");
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Failed to load jsPDF"));
+      script.onload = () => {
+        console.info("[siteplan] jsPDF script loaded");
+        resolve();
+      };
+      script.onerror = () => {
+        console.error("[siteplan] jsPDF script failed to load");
+        reject(new Error("Failed to load jsPDF"));
+      };
       document.head.appendChild(script);
     });
+    console.info("[siteplan] jsPDF ready");
     return window.jspdf!.jsPDF as JsPdfConstructor;
   }
 
@@ -396,6 +428,7 @@ export function MapShell() {
     setIsGenerating(true);
     try {
       const map = mapRef.current;
+      console.info("[siteplan] begin PDF generation");
 
       // Build temporary symbol layer to capture labels in canvas
       const labelSourceId = "__siteplan-labels-src";
@@ -441,11 +474,13 @@ export function MapShell() {
                 features,
               } as FeatureCollection,
             });
+            console.info("[siteplan] added label source (first time)");
           } else {
             (map.getSource(labelSourceId) as mapboxgl.GeoJSONSource).setData({
               type: "FeatureCollection",
               features,
             } as FeatureCollection);
+            console.info("[siteplan] updated label source data");
           }
           if (!map.getLayer(labelLayerId)) {
             // Add at the top to ensure visibility
@@ -477,31 +512,44 @@ export function MapShell() {
               },
               undefined
             );
+            console.info("[siteplan] added label layer");
           }
           await new Promise<void>((resolve) => {
             const done = () => resolve();
             const anyMap = map as unknown as { isStyleLoaded?: () => boolean };
             if (anyMap.isStyleLoaded && anyMap.isStyleLoaded()) {
               map.once("idle", done);
-              setTimeout(done, 300);
+              setTimeout(done, 800);
             } else {
-              setTimeout(done, 300);
+              setTimeout(done, 800);
             }
           });
+          console.info("[siteplan] map idle after label layer");
         } catch {}
       }
 
       // Capture canvas
       const canvas = map.getCanvas();
-      const imgData = canvas.toDataURL("image/png");
+      console.info("[siteplan] capturing canvas to data URL...");
+      let imgData = "";
+      try {
+        imgData = canvas.toDataURL("image/png");
+      } catch {
+        // If toDataURL fails due to tainting, try forcing a quick re-render then retry
+        console.warn("[siteplan] toDataURL failed; retrying after short delay");
+        await new Promise<void>((r) => setTimeout(r, 50));
+        imgData = canvas.toDataURL("image/png");
+      }
 
       // Clean up temp label layer/source
       try {
         if (map.getLayer(labelLayerId)) map.removeLayer(labelLayerId);
         if (map.getSource(labelSourceId)) map.removeSource(labelSourceId);
+        console.info("[siteplan] cleaned up temp label layer/source");
       } catch {}
 
       const jsPDF = await loadJsPDF();
+      console.info("[siteplan] creating jsPDF document...");
       const pdf = new jsPDF({
         orientation: "landscape",
         unit: "pt",
@@ -512,11 +560,12 @@ export function MapShell() {
       const margin = 36;
 
       // Fit image to page with margins
-      const img = new Image();
+      const img = new window.Image();
       // ensure CORS-safe draw for some browsers
       img.crossOrigin = "anonymous";
       img.src = imgData;
       await new Promise<void>((res) => (img.onload = () => res()));
+      console.info("[siteplan] image loaded; adding to PDF page 1");
       const imgW = img.width;
       const imgH = img.height;
       const maxW = pageWidth - margin * 2;
@@ -527,6 +576,7 @@ export function MapShell() {
       const dx = margin + (maxW - drawW) / 2;
       const dy = margin + (maxH - drawH) / 2;
       pdf.addImage(imgData, "PNG", dx, dy, drawW, drawH);
+      console.info("[siteplan] added screenshot to PDF");
 
       // Build tables on next pages
       const startNewPage = () => {
@@ -678,11 +728,14 @@ export function MapShell() {
         y += rowH + rowGap;
       }
 
+      console.info("[siteplan] saving PDF...");
       pdf.save("site-plan.pdf");
+      console.info("[siteplan] PDF saved");
     } catch {
-      // noop
+      console.error("[siteplan] PDF generation failed");
     } finally {
       setIsGenerating(false);
+      console.info("[siteplan] generation finished");
     }
   }
 
@@ -1155,7 +1208,7 @@ export function MapShell() {
   return (
     <div className="h-screen w-screen flex">
       <aside className="w-[300px] shrink-0 border-r border-border p-4 space-y-4">
-        <div className="text-xl font-semibold">
+        <div className="flex items-center justify-center select-none">
           <Image
             src="/pyroplot-logo.svg"
             alt="Pyro Plot"
@@ -1249,14 +1302,14 @@ export function MapShell() {
                     "text/plain",
                     JSON.stringify({
                       key: a.key,
-                      glyph: a.key === "audience" ? "👥" : "📍",
+                      glyph: a.key === "audience" ? "👥" : "✨",
                     })
                   );
                 }}
-                className="h-9 w-full grid grid-cols-[20px_1fr] items-center gap-2 rounded-md border border-border bg-background hover:bg-muted px-2 text-xs"
+                className="h-9 w-full grid grid-cols-[20px_1fr] items-center text-start gap-0.5 rounded-md border border-border bg-background hover:bg-muted px-2 text-xs"
                 type="button"
               >
-                <span>{a.key === "audience" ? "👥" : "📍"}</span>
+                <span>{a.key === "audience" ? "👥" : "✨"}</span>
                 <span className="truncate">{a.label}</span>
               </button>
             ))}
@@ -1314,7 +1367,7 @@ export function MapShell() {
                 <DialogTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background text-orange-500 px-3 py-2 text-sm hover:bg-muted"
+                    className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background text-brand px-3 py-2 text-sm hover:bg-muted"
                   >
                     Clear Annotations
                   </button>
@@ -1340,7 +1393,7 @@ export function MapShell() {
                     <button
                       type="button"
                       onClick={() => clearAllAnnotations()}
-                      className="inline-flex items-center justify-center rounded-md bg-orange-700 text-white px-3 py-2 text-sm hover:opacity-90"
+                      className="inline-flex items-center justify-center rounded-md bg-brand text-white px-3 py-2 text-sm hover:opacity-90"
                     >
                       Confirm clear
                     </button>
