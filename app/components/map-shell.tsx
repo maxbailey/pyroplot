@@ -17,6 +17,48 @@ import {
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
+interface JsPdfInstance {
+  internal: { pageSize: { getWidth(): number; getHeight(): number } };
+  setFont(font: string, style?: string): void;
+  setFontSize(size: number): void;
+  text(text: string, x: number, y: number): void;
+  addImage(
+    imageData: string,
+    format: "PNG" | "JPEG" | "JPG",
+    x: number,
+    y: number,
+    w: number,
+    h: number
+  ): void;
+  addPage(
+    format?: string | number[],
+    orientation?: "portrait" | "landscape"
+  ): void;
+  rect(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    style?: "S" | "F" | "FD" | "DF"
+  ): void;
+  setFillColor(r: number, g: number, b: number): void;
+  save(filename: string): void;
+}
+
+interface JsPdfConstructor {
+  new (options?: {
+    orientation?: "portrait" | "landscape";
+    unit?: string;
+    format?: string | number[];
+  }): JsPdfInstance;
+}
+
+declare global {
+  interface Window {
+    jspdf?: { jsPDF: JsPdfConstructor };
+  }
+}
+
 type AnnotationItem = {
   key: string;
   label: string;
@@ -24,9 +66,14 @@ type AnnotationItem = {
   color: string;
 };
 
+type AnnotationType = "firework" | "audience";
+
 interface AnnotationRecord {
+  type: AnnotationType;
+  number: number;
   id: string;
   inches: number;
+  label: string;
   color: string;
   marker: mapboxgl.Marker;
   sourceId: string;
@@ -36,6 +83,8 @@ interface AnnotationRecord {
 }
 
 interface AudienceRecord {
+  type: AnnotationType;
+  number: number;
   id: string;
   sourceId: string;
   fillLayerId: string;
@@ -58,8 +107,11 @@ export function MapShell() {
   const annotationMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const annotationsRef = useRef<Record<string, AnnotationRecord>>({});
   const audienceAreasRef = useRef<Record<string, AudienceRecord>>({});
+  const fireworkCounterRef = useRef<number>(0);
+  const audienceCounterRef = useRef<number>(0);
   // Reset dialog is controlled by Radix internally via Dialog primitives
   const [showHeight, setShowHeight] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const annotationPalette = useMemo<AnnotationItem[]>(
     () => [
@@ -99,6 +151,7 @@ export function MapShell() {
       pitch: 20,
       bearing: 0,
       antialias: true,
+      preserveDrawingBuffer: true,
       attributionControl: false,
     });
 
@@ -310,12 +363,335 @@ export function MapShell() {
     return meters / 0.3048;
   }
 
-  function getMetersPerPixel(lat: number, zoom: number) {
-    const R = 6378137;
-    return (
-      (Math.cos((lat * Math.PI) / 180) * 2 * Math.PI * R) /
-      (512 * Math.pow(2, zoom))
-    );
+  // removed unused getMetersPerPixel helper
+
+  async function loadJsPDF(): Promise<JsPdfConstructor> {
+    if (window.jspdf?.jsPDF) return window.jspdf.jsPDF;
+    await new Promise<void>((resolve, reject) => {
+      const existing = document.querySelector<HTMLScriptElement>(
+        'script[data-lib="jspdf"]'
+      );
+      if (existing) {
+        existing.addEventListener("load", () => resolve());
+        existing.addEventListener("error", () => reject());
+        return;
+      }
+      const script = document.createElement("script");
+      script.src =
+        "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js";
+      script.async = true;
+      script.defer = true;
+      script.setAttribute("data-lib", "jspdf");
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Failed to load jsPDF"));
+      document.head.appendChild(script);
+    });
+    return window.jspdf!.jsPDF as JsPdfConstructor;
+  }
+
+  async function generateSitePlanPdf() {
+    if (!mapRef.current) return;
+    if (isGenerating) return;
+    setIsGenerating(true);
+    try {
+      const map = mapRef.current;
+
+      // Build temporary symbol layer to capture labels in canvas
+      const labelSourceId = "__siteplan-labels-src";
+      const labelLayerId = "__siteplan-labels-layer";
+      const features: Array<Feature> = [];
+      // Firework labels from markers
+      for (const key of Object.keys(annotationsRef.current)) {
+        const rec = annotationsRef.current[key]!;
+        const pos = rec.marker.getLngLat();
+        const radiusFeet = Math.round(rec.inches * 70);
+        features.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [pos.lng, pos.lat] },
+          properties: {
+            title: `${rec.number}. ${rec.label}`,
+            subtitle: `${radiusFeet} ft radius`,
+            color: rec.color,
+          },
+        } as Feature);
+      }
+      // Audience labels centered on rectangle
+      for (const key of Object.keys(audienceAreasRef.current)) {
+        const rec = audienceAreasRef.current[key]!;
+        const c = rec.corners;
+        const centerLng = (c[0][0] + c[2][0]) / 2;
+        const centerLat = (c[0][1] + c[2][1]) / 2;
+        const metersW =
+          Math.abs(c[1][0] - c[0][0]) *
+          111320 *
+          Math.cos((centerLat * Math.PI) / 180);
+        const metersH = Math.abs(c[3][1] - c[0][1]) * 110540;
+        const widthFt = Math.round(metersToFeet(metersW));
+        const heightFt = Math.round(metersToFeet(metersH));
+        features.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [centerLng, centerLat] },
+          properties: {
+            title: `${rec.number}. Audience`,
+            subtitle: `${widthFt}ft × ${heightFt}ft`,
+            color: "#60a5fa",
+          },
+        } as Feature);
+      }
+
+      if (features.length > 0) {
+        try {
+          if (!map.getSource(labelSourceId)) {
+            map.addSource(labelSourceId, {
+              type: "geojson",
+              data: {
+                type: "FeatureCollection",
+                features,
+              } as FeatureCollection,
+            });
+          } else {
+            (map.getSource(labelSourceId) as mapboxgl.GeoJSONSource).setData({
+              type: "FeatureCollection",
+              features,
+            } as FeatureCollection);
+          }
+          if (!map.getLayer(labelLayerId)) {
+            // Add at the top to ensure visibility
+            map.addLayer(
+              {
+                id: labelLayerId,
+                type: "symbol",
+                source: labelSourceId,
+                layout: {
+                  "text-field": [
+                    "concat",
+                    ["get", "title"],
+                    "\n",
+                    ["get", "subtitle"],
+                  ],
+                  "text-size": 12,
+                  "text-offset": [0, 0.6],
+                  "text-anchor": "top",
+                  "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+                  "text-allow-overlap": true,
+                  "symbol-placement": "point",
+                  "text-pitch-alignment": "viewport",
+                },
+                paint: {
+                  "text-color": "#111827",
+                  "text-halo-color": "#ffffff",
+                  "text-halo-width": 1.5,
+                },
+              },
+              undefined
+            );
+          }
+          await new Promise<void>((resolve) => {
+            const done = () => resolve();
+            const anyMap = map as unknown as { isStyleLoaded?: () => boolean };
+            if (anyMap.isStyleLoaded && anyMap.isStyleLoaded()) {
+              map.once("idle", done);
+              setTimeout(done, 300);
+            } else {
+              setTimeout(done, 300);
+            }
+          });
+        } catch {}
+      }
+
+      // Capture canvas
+      const canvas = map.getCanvas();
+      const imgData = canvas.toDataURL("image/png");
+
+      // Clean up temp label layer/source
+      try {
+        if (map.getLayer(labelLayerId)) map.removeLayer(labelLayerId);
+        if (map.getSource(labelSourceId)) map.removeSource(labelSourceId);
+      } catch {}
+
+      const jsPDF = await loadJsPDF();
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "letter",
+      });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 36;
+
+      // Fit image to page with margins
+      const img = new Image();
+      // ensure CORS-safe draw for some browsers
+      img.crossOrigin = "anonymous";
+      img.src = imgData;
+      await new Promise<void>((res) => (img.onload = () => res()));
+      const imgW = img.width;
+      const imgH = img.height;
+      const maxW = pageWidth - margin * 2;
+      const maxH = pageHeight - margin * 2;
+      const scale = Math.min(maxW / imgW, maxH / imgH);
+      const drawW = imgW * scale;
+      const drawH = imgH * scale;
+      const dx = margin + (maxW - drawW) / 2;
+      const dy = margin + (maxH - drawH) / 2;
+      pdf.addImage(imgData, "PNG", dx, dy, drawW, drawH);
+
+      // Build tables on next pages
+      const startNewPage = () => {
+        pdf.addPage("letter", "landscape");
+      };
+
+      const drawHeader = (title: string) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(16);
+        pdf.text(title, margin, margin);
+      };
+
+      const drawRowBg = (x: number, y: number, w: number, h: number) => {
+        pdf.setFillColor(245, 245, 245);
+        pdf.rect(x, y, w, h, "F");
+      };
+
+      const lineHeight = 16;
+      const rowGap = 6;
+
+      // Firework Annotations table
+      startNewPage();
+      drawHeader("Firework Annotations");
+      let y = margin + 18;
+      const colX = [margin, margin + 90, margin + 320, margin + 440];
+      // column widths derived implicitly; explicit widths not needed
+
+      // header
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(11);
+      const headerH = 26;
+      drawRowBg(margin, y, pageWidth - margin * 2, headerH);
+      const headerYMid = y + headerH / 2 + 3;
+      pdf.text("ID/#", colX[0], headerYMid);
+      pdf.text("Label", colX[1], headerYMid);
+      pdf.text("Fallout Radius (ft)", colX[2], headerYMid);
+      pdf.text("Lat, Lng", colX[3], headerYMid);
+      y += headerH + rowGap;
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      const fireworks = Object.values(annotationsRef.current).sort(
+        (a, b) => a.number - b.number
+      );
+      for (const rec of fireworks) {
+        const pos = rec.marker.getLngLat();
+        const id = String(rec.number);
+        const label = rec.label;
+        const radius = Math.round(rec.inches * 70).toString();
+        const latlng = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
+
+        const rowH = 26;
+        if (y + rowH + margin > pageHeight) {
+          startNewPage();
+          drawHeader("Firework Annotations (cont.)");
+          y = margin + 18;
+          drawRowBg(margin, y, pageWidth - margin * 2, headerH);
+          const hY = y + headerH / 2 + 3;
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(11);
+          pdf.text("ID/#", colX[0], hY);
+          pdf.text("Label", colX[1], hY);
+          pdf.text("Fallout Radius (ft)", colX[2], hY);
+          pdf.text("Lat, Lng", colX[3], hY);
+          y += headerH + rowGap;
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(10);
+        }
+        drawRowBg(margin, y, pageWidth - margin * 2, rowH);
+        const yMid = y + rowH / 2 + 3;
+        pdf.text(id, colX[0], yMid);
+        pdf.text(label, colX[1], yMid);
+        pdf.text(radius, colX[2], yMid);
+        pdf.text(latlng, colX[3], yMid);
+        y += rowH + rowGap;
+      }
+
+      // Audience Annotations table
+      startNewPage();
+      drawHeader("Audience Annotations");
+      y = margin + 18;
+      const aColX = [margin, margin + 90, margin + 280, margin + 420];
+      // column widths for audience table derived implicitly
+      // header
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(11);
+      drawRowBg(margin, y, pageWidth - margin * 2, headerH);
+      const aHeaderYMid = y + headerH / 2 + 3;
+      pdf.text("ID/#", aColX[0], aHeaderYMid);
+      pdf.text("Label", aColX[1], aHeaderYMid);
+      pdf.text("Dimensions (ft)", aColX[2], aHeaderYMid);
+      pdf.text("Corners (lat, lng)", aColX[3], aHeaderYMid);
+      y += headerH + rowGap;
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      const audiences = Object.values(audienceAreasRef.current).sort(
+        (a, b) => a.number - b.number
+      );
+      for (const rec of audiences) {
+        const id = String(rec.number);
+        const label = "Audience";
+        const c = rec.corners;
+        const centerLat = (c[0][1] + c[2][1]) / 2;
+        const metersW =
+          Math.abs(c[1][0] - c[0][0]) *
+          111320 *
+          Math.cos((centerLat * Math.PI) / 180);
+        const metersH = Math.abs(c[3][1] - c[0][1]) * 110540;
+        const widthFt = Math.round(metersToFeet(metersW));
+        const heightFt = Math.round(metersToFeet(metersH));
+        const dims = `${widthFt} × ${heightFt}`;
+        const cornerLines = [
+          `${c[0][1].toFixed(6)}, ${c[0][0].toFixed(6)}`,
+          `${c[1][1].toFixed(6)}, ${c[1][0].toFixed(6)}`,
+          `${c[2][1].toFixed(6)}, ${c[2][0].toFixed(6)}`,
+          `${c[3][1].toFixed(6)}, ${c[3][0].toFixed(6)}`,
+        ];
+        const lines = cornerLines.length;
+        const rowH = Math.max(26, lines * lineHeight + 10);
+        if (y + rowH + margin > pageHeight) {
+          startNewPage();
+          drawHeader("Audience Annotations (cont.)");
+          y = margin + 18;
+          drawRowBg(margin, y, pageWidth - margin * 2, headerH);
+          const hY = y + headerH / 2 + 3;
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(11);
+          pdf.text("ID/#", aColX[0], hY);
+          pdf.text("Label", aColX[1], hY);
+          pdf.text("Dimensions (ft)", aColX[2], hY);
+          pdf.text("Corners (lat, lng)", aColX[3], hY);
+          y += headerH + rowGap;
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(10);
+        }
+        drawRowBg(margin, y, pageWidth - margin * 2, rowH);
+        // Vertically center simple cells
+        const yMid = y + rowH / 2 + 3;
+        pdf.text(id, aColX[0], yMid);
+        pdf.text(label, aColX[1], yMid);
+        pdf.text(dims, aColX[2], yMid);
+        // Corner lines stacked
+        let lineY = y + (rowH - lines * lineHeight) / 2 + lineHeight - 4;
+        for (const ln of cornerLines) {
+          pdf.text(ln, aColX[3], lineY);
+          lineY += lineHeight;
+        }
+        y += rowH + rowGap;
+      }
+
+      pdf.save("site-plan.pdf");
+    } catch {
+      // noop
+    } finally {
+      setIsGenerating(false);
+    }
   }
 
   function normalizeCorners(input: [number, number][]): [number, number][] {
@@ -372,104 +748,11 @@ export function MapShell() {
     } as Feature<Polygon>;
   }
 
-  function pointInPoly(
-    px: { x: number; y: number },
-    poly: { x: number; y: number }[]
-  ) {
-    let inside = false;
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const xi = poly[i].x,
-        yi = poly[i].y;
-      const xj = poly[j].x,
-        yj = poly[j].y;
-      const intersect =
-        yi > px.y !== yj > px.y &&
-        px.x < ((xj - xi) * (px.y - yi)) / (yj - yi) + xi;
-      if (intersect) inside = !inside;
-    }
-    return inside;
-  }
+  // removed unused pointInPoly helper
 
-  function distPointToSegment(
-    px: { x: number; y: number },
-    a: { x: number; y: number },
-    b: { x: number; y: number }
-  ) {
-    const vx = b.x - a.x;
-    const vy = b.y - a.y;
-    const wx = px.x - a.x;
-    const wy = px.y - a.y;
-    const c1 = vx * wx + vy * wy;
-    if (c1 <= 0) return Math.hypot(px.x - a.x, px.y - a.y);
-    const c2 = vx * vx + vy * vy;
-    if (c2 <= c1) return Math.hypot(px.x - b.x, px.y - b.y);
-    const t = c1 / c2;
-    const projx = a.x + t * vx;
-    const projy = a.y + t * vy;
-    return Math.hypot(px.x - projx, px.y - projy);
-  }
+  // removed unused distPointToSegment helper
 
-  function updateAudienceClearanceForCorners(
-    labelNode: HTMLDivElement,
-    subNode: HTMLDivElement,
-    corners: [number, number][]
-  ) {
-    if (!mapRef.current) return;
-    const map = mapRef.current;
-    const centerLat = (corners[0][1] + corners[2][1]) / 2;
-    const zoom = map.getZoom();
-    const mpp = getMetersPerPixel(centerLat, zoom);
-    const rectPx = corners.map(([lng, lat]) => map.project({ lng, lat }));
-
-    let minDeltaMeters = Infinity;
-    const overlapping: Set<string> = new Set();
-
-    for (const key of Object.keys(annotationsRef.current)) {
-      const rec = annotationsRef.current[key];
-      const cLL = rec.marker.getLngLat();
-      const cPx = map.project(cLL);
-      const radiusMeters = feetToMeters(rec.inches * 70);
-      const radiusPx = radiusMeters / mpp;
-      const centerInRect = pointInPoly(cPx, rectPx);
-      let minDistPx = Infinity;
-      for (let i = 0; i < rectPx.length; i++) {
-        const a = rectPx[i];
-        const b = rectPx[(i + 1) % rectPx.length];
-        const d = distPointToSegment(cPx, a, b);
-        if (d < minDistPx) minDistPx = d;
-      }
-      const deltaPx = (centerInRect ? 0 : minDistPx) - radiusPx;
-      const deltaMeters = deltaPx * mpp;
-      if (deltaMeters < minDeltaMeters) minDeltaMeters = deltaMeters;
-      if (deltaMeters < 0) overlapping.add(key);
-    }
-
-    const deltaFeet = Math.round(minDeltaMeters / 0.3048);
-    subNode.textContent = `${deltaFeet} ft from closest fallout zone`;
-    if (minDeltaMeters < 0) {
-      labelNode.classList.add("bg-destructive", "text-destructive-foreground");
-      for (const key of Object.keys(annotationsRef.current)) {
-        const rec = annotationsRef.current[key];
-        const opacity = overlapping.has(key) ? 1 : 0.1;
-        try {
-          map.setPaintProperty(rec.fillLayerId, "fill-opacity", 0.25 * opacity);
-          map.setPaintProperty(rec.lineLayerId, "line-opacity", opacity);
-        } catch {}
-      }
-    } else {
-      labelNode.classList.remove(
-        "bg-destructive",
-        "text-destructive-foreground"
-      );
-      for (const key of Object.keys(annotationsRef.current)) {
-        const rec = annotationsRef.current[key];
-        try {
-          map.setPaintProperty(rec.fillLayerId, "fill-opacity", 0.25);
-          map.setPaintProperty(rec.lineLayerId, "line-opacity", 1);
-        } catch {}
-      }
-    }
-  }
+  // audience clearance helper removed (was unused)
 
   function removeFireworkAnnotation(id: string) {
     const map = mapRef.current;
@@ -586,6 +869,7 @@ export function MapShell() {
       ];
       const rectFeature = createRectangleFeature(corners);
       const id = `aud-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const number = ++audienceCounterRef.current;
       const sourceId = `${id}-src`;
       mapRef.current.addSource(sourceId, {
         type: "geojson",
@@ -733,6 +1017,8 @@ export function MapShell() {
         return cm;
       });
       audienceAreasRef.current[id] = {
+        type: "audience",
+        number,
         id,
         sourceId,
         fillLayerId: `${id}-fill`,
@@ -768,6 +1054,7 @@ export function MapShell() {
     const circleId = `circle-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2)}`;
+    const number = ++fireworkCounterRef.current;
     // right-click on label removes the entire annotation
     labelEl.addEventListener("contextmenu", (evt) => {
       evt.preventDefault();
@@ -804,8 +1091,11 @@ export function MapShell() {
       },
     });
     annotationsRef.current[circleId] = {
+      type: "firework",
+      number,
       id: circleId,
       inches: item.inches,
+      label: item.label,
       color: item.color,
       marker,
       sourceId,
@@ -975,7 +1265,7 @@ export function MapShell() {
         </div>
 
         <div className="pt-4 border-t border-border">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col items-stretch gap-2">
             <button
               type="button"
               onClick={() => {
@@ -1012,49 +1302,54 @@ export function MapShell() {
             >
               {showHeight ? "Hide Height" : "Show Height"}
             </button>
+            <button
+              type="button"
+              onClick={() => void generateSitePlanPdf()}
+              disabled={isGenerating}
+              className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted disabled:opacity-60"
+            >
+              {isGenerating ? "Generating…" : "Generate Site Plan"}
+            </button>
+            <Dialog>
+              <div className="flex justify-between items-center gap-2">
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background text-destructive px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    Clear Annotations
+                  </button>
+                </DialogTrigger>
+              </div>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Clear annotations?</DialogTitle>
+                  <DialogDescription>
+                    This will remove all annotations you have added to the map.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                    >
+                      Cancel
+                    </button>
+                  </DialogClose>
+                  <DialogClose asChild>
+                    <button
+                      type="button"
+                      onClick={() => clearAllAnnotations()}
+                      className="inline-flex items-center justify-center rounded-md bg-red-900 text-white px-3 py-2 text-sm hover:opacity-90"
+                    >
+                      Confirm clear
+                    </button>
+                  </DialogClose>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
-        </div>
-
-        <div className="pt-4 border-t border-border">
-          <Dialog>
-            <div className="flex justify-between items-center gap-2">
-              <DialogTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
-                >
-                  Clear Annotations
-                </button>
-              </DialogTrigger>
-            </div>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Clear annotations?</DialogTitle>
-                <DialogDescription>
-                  This will remove all annotations you have added to the map.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <DialogClose asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
-                  >
-                    Cancel
-                  </button>
-                </DialogClose>
-                <DialogClose asChild>
-                  <button
-                    type="button"
-                    onClick={() => clearAllAnnotations()}
-                    className="inline-flex items-center justify-center rounded-md bg-destructive text-destructive-foreground px-3 py-2 text-sm hover:opacity-90"
-                  >
-                    Confirm clear
-                  </button>
-                </DialogClose>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </div>
       </aside>
 
