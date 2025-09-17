@@ -1730,8 +1730,8 @@ export function MapShell() {
   }
 
   return (
-    <div className="h-screen w-screen flex">
-      <aside className="w-[300px] shrink-0 border-r border-border p-4 space-y-4">
+    <div className="h-screen w-screen flex overflow-hidden">
+      <aside className="w-[300px] shrink-0 border-r border-border p-4 space-y-4 overflow-y-auto">
         <div className="flex items-center justify-center select-none">
           <Image
             src="/pyroplot-logo.svg"
