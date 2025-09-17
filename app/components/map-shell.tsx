@@ -588,9 +588,74 @@ export function MapShell() {
       pdf.addImage(imgData, "PNG", dx, dy, drawW, drawH);
       console.info("[siteplan] added screenshot to PDF");
 
+      const addLogoToPage = async () => {
+        try {
+          console.info("[siteplan] Adding logo to page...");
+          const logoResponse = await fetch("/pyroplot-logo-lightmode.svg");
+          if (!logoResponse.ok) {
+            throw new Error(`Failed to fetch logo: ${logoResponse.status}`);
+          }
+
+          const logoText = await logoResponse.text();
+          console.info("[siteplan] Logo SVG loaded, length:", logoText.length);
+
+          // Convert SVG to canvas first, then to PNG data URL
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          if (!ctx) throw new Error("Could not get canvas context");
+
+          const logoHeight = 18;
+          const logoWidth = 82;
+          // Use higher resolution canvas for crisp rendering
+          const scale = 2; // 2x resolution
+          canvas.width = logoWidth * scale;
+          canvas.height = logoHeight * scale;
+          ctx.scale(scale, scale);
+
+          // Create an image from the SVG
+          const logoImg = new window.Image();
+          logoImg.crossOrigin = "anonymous";
+
+          await new Promise<void>((resolve, reject) => {
+            logoImg.onload = () => {
+              try {
+                ctx.drawImage(logoImg, 0, 0, logoWidth, logoHeight);
+                resolve();
+              } catch (err) {
+                reject(err);
+              }
+            };
+            logoImg.onerror = () =>
+              reject(new Error("Failed to load logo image"));
+            logoImg.src = `data:image/svg+xml;base64,${btoa(logoText)}`;
+          });
+
+          const logoDataUrl = canvas.toDataURL("image/png");
+          console.info("[siteplan] Logo converted to PNG data URL");
+
+          const logoX = pageWidth - margin - logoWidth;
+          const logoY = margin - 15;
+
+          console.info("[siteplan] Adding logo at position:", {
+            logoX,
+            logoY,
+            logoWidth,
+            logoHeight,
+          });
+          pdf.addImage(logoDataUrl, "PNG", logoX, logoY, logoWidth, logoHeight);
+          console.info("[siteplan] Logo added to PDF page");
+        } catch (error) {
+          console.error("[siteplan] Failed to add logo to page:", error);
+        }
+      };
+
+      // Add logo to first page
+      await addLogoToPage();
+
       // Build tables on next pages
-      const startNewPage = () => {
+      const startNewPage = async () => {
         pdf.addPage("letter", "landscape");
+        await addLogoToPage();
       };
 
       const drawHeader = (title: string) => {
@@ -608,7 +673,7 @@ export function MapShell() {
       const rowGap = 6;
 
       // Firework Annotations table
-      startNewPage();
+      await startNewPage();
       drawHeader("Firework Annotations");
       let y = margin + 18;
       const colX = [margin, margin + 90, margin + 320, margin + 440];
@@ -640,7 +705,7 @@ export function MapShell() {
 
         const rowH = 26;
         if (y + rowH + margin > pageHeight) {
-          startNewPage();
+          await startNewPage();
           drawHeader("Firework Annotations (cont.)");
           y = margin + 18;
           drawRowBg(margin, y, pageWidth - margin * 2, headerH);
@@ -665,7 +730,7 @@ export function MapShell() {
       }
 
       // Audience Annotations table
-      startNewPage();
+      await startNewPage();
       drawHeader("Audience Annotations");
       y = margin + 18;
       const aColX = [margin, margin + 90, margin + 280, margin + 420];
@@ -708,7 +773,7 @@ export function MapShell() {
         const lines = cornerLines.length;
         const rowH = Math.max(26, lines * lineHeight + 10);
         if (y + rowH + margin > pageHeight) {
-          startNewPage();
+          await startNewPage();
           drawHeader("Audience Annotations (cont.)");
           y = margin + 18;
           drawRowBg(margin, y, pageWidth - margin * 2, headerH);
