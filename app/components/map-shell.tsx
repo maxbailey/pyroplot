@@ -2166,18 +2166,15 @@ export function MapShell() {
     }
 
     if (item.key === "measurement") {
-      // Create measurement with two points ~50ft apart
-      const distanceFt = 50;
+      // Create measurement with two points 150ft apart, north/south vertical
+      const distanceFt = 150;
       const distanceMeters = feetToMeters(distanceFt);
-      const metersToLng = (m: number, lat: number) =>
-        m / (111320 * Math.cos((lat * Math.PI) / 180));
       const metersToLat = (m: number) => m / 110540;
-      const lngOffset = metersToLng(distanceMeters, lngLat.lat);
       const latOffset = metersToLat(distanceMeters);
 
       const points: [number, number][] = [
         [lngLat.lng, lngLat.lat],
-        [lngLat.lng + lngOffset, lngLat.lat + latOffset],
+        [lngLat.lng, lngLat.lat + latOffset], // Only lat offset for north/south
       ];
 
       const id = `meas-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -2328,6 +2325,50 @@ export function MapShell() {
         pointMarkers,
         points,
       };
+
+      // Add label drag handler to move entire measurement
+      const onLabelDrag = () => {
+        const cur = labelMarker.getLngLat();
+        const originalCenterLng = (points[0][0] + points[1][0]) / 2;
+        const originalCenterLat = (points[0][1] + points[1][1]) / 2;
+        const dLng = cur.lng - originalCenterLng;
+        const dLat = cur.lat - originalCenterLat;
+
+        // Move both points by the same offset
+        const newPoints: [number, number][] = [
+          [points[0][0] + dLng, points[0][1] + dLat],
+          [points[1][0] + dLng, points[1][1] + dLat],
+        ];
+
+        // Update the line
+        const lineFeature = {
+          type: "Feature" as const,
+          geometry: {
+            type: "LineString" as const,
+            coordinates: newPoints,
+          },
+          properties: {},
+        };
+
+        const src = mapRef.current!.getSource(
+          sourceId
+        ) as mapboxgl.GeoJSONSource;
+        src.setData({
+          type: "FeatureCollection",
+          features: [lineFeature],
+        } as FeatureCollection);
+
+        // Update point markers
+        newPoints.forEach((point, i) => pointMarkers[i].setLngLat(point));
+
+        // Update points reference
+        points[0] = newPoints[0];
+        points[1] = newPoints[1];
+        measurementsRef.current[id].points = points;
+      };
+
+      labelMarker.on("drag", onLabelDrag);
+      labelMarker.on("dragend", onLabelDrag);
 
       return;
     }
@@ -2717,7 +2758,7 @@ export function MapShell() {
                   setActiveIndex(-1);
                 }
               }}
-              placeholder="Search places"
+              placeholder="Search for a place on Earth..."
               role="combobox"
               aria-expanded={suggestions.length > 0}
               aria-controls="search-suggestions"
@@ -2726,7 +2767,7 @@ export function MapShell() {
                   ? `sugg-${suggestions[activeIndex]!.id}`
                   : undefined
               }
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-md border border-input bg-white/5 px-3 py-2 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring"
             />
           </form>
           {suggestions.length > 0 && (
@@ -2775,26 +2816,26 @@ export function MapShell() {
                       key: a.key,
                       glyph:
                         a.key === "audience"
-                          ? "👥"
+                          ? "😊"
                           : a.key === "measurement"
-                          ? "📏"
+                          ? "📐"
                           : a.key === "restricted"
                           ? "🚫"
-                          : "✨",
+                          : "💣",
                     })
                   );
                 }}
-                className="h-9 w-full grid grid-cols-[20px_1fr] items-center text-start gap-0.5 rounded-md border border-border bg-background hover:bg-muted px-2 text-xs"
+                className="h-9 w-full grid grid-cols-[20px_1fr] items-center text-start gap-0.5 rounded-md border border-border bg-white/5 !cursor-move hover:bg-muted px-2 text-xs"
                 type="button"
               >
                 <span>
                   {a.key === "audience"
-                    ? "👥"
+                    ? "😊"
                     : a.key === "measurement"
-                    ? "📏"
+                    ? "📐"
                     : a.key === "restricted"
                     ? "🚫"
-                    : "✨"}
+                    : "💣"}
                 </span>
                 <span className="truncate">{a.label}</span>
               </button>
