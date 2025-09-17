@@ -404,14 +404,12 @@ export function MapShell() {
       for (const key of Object.keys(annotationsRef.current)) {
         const rec = annotationsRef.current[key]!;
         const pos = rec.marker.getLngLat();
-        const radiusFeet = Math.round(rec.inches * 70);
         features.push({
           type: "Feature",
           geometry: { type: "Point", coordinates: [pos.lng, pos.lat] },
           properties: {
-            title: `${rec.number}. ${rec.label}`,
-            subtitle: `${radiusFeet} ft radius`,
-            color: rec.color,
+            id: String(rec.number),
+            atype: "firework",
           },
         } as Feature);
       }
@@ -421,20 +419,13 @@ export function MapShell() {
         const c = rec.corners;
         const centerLng = (c[0][0] + c[2][0]) / 2;
         const centerLat = (c[0][1] + c[2][1]) / 2;
-        const metersW =
-          Math.abs(c[1][0] - c[0][0]) *
-          111320 *
-          Math.cos((centerLat * Math.PI) / 180);
-        const metersH = Math.abs(c[3][1] - c[0][1]) * 110540;
-        const widthFt = Math.round(metersToFeet(metersW));
-        const heightFt = Math.round(metersToFeet(metersH));
+        // dimensions not needed for ID-only overlay label
         features.push({
           type: "Feature",
           geometry: { type: "Point", coordinates: [centerLng, centerLat] },
           properties: {
-            title: `${rec.number}. Audience`,
-            subtitle: `${widthFt}ft × ${heightFt}ft`,
-            color: "#60a5fa",
+            id: String(rec.number),
+            atype: "audience",
           },
         } as Feature);
       }
@@ -464,23 +455,23 @@ export function MapShell() {
                 source: labelSourceId,
                 layout: {
                   "text-field": [
-                    "concat",
-                    ["get", "title"],
-                    "\n",
-                    ["get", "subtitle"],
+                    "case",
+                    ["==", ["get", "atype"], "audience"],
+                    ["concat", "Audience ", ["get", "id"]],
+                    ["get", "id"],
                   ],
-                  "text-size": 12,
-                  "text-offset": [0, 0.6],
-                  "text-anchor": "top",
+                  "text-size": 28,
+                  "text-offset": [0, 0],
+                  "text-anchor": "center",
                   "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
                   "text-allow-overlap": true,
                   "symbol-placement": "point",
                   "text-pitch-alignment": "viewport",
                 },
                 paint: {
-                  "text-color": "#111827",
-                  "text-halo-color": "#ffffff",
-                  "text-halo-width": 1.5,
+                  "text-color": "#ffffff",
+                  "text-halo-color": "#000000",
+                  "text-halo-width": 2,
                 },
               },
               undefined
