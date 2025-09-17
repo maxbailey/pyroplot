@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import mapboxgl from "mapbox-gl";
@@ -1154,7 +1155,14 @@ export function MapShell() {
   return (
     <div className="h-screen w-screen flex">
       <aside className="w-[300px] shrink-0 border-r border-border p-4 space-y-4">
-        <div className="text-xl font-semibold">Pyro Plot</div>
+        <div className="text-xl font-semibold">
+          <Image
+            src="/pyroplot-logo.svg"
+            alt="Pyro Plot"
+            width={140}
+            height={100}
+          />
+        </div>
 
         <div>
           <form
@@ -1306,7 +1314,7 @@ export function MapShell() {
                 <DialogTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background text-destructive px-3 py-2 text-sm hover:bg-muted"
+                    className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background text-orange-500 px-3 py-2 text-sm hover:bg-muted"
                   >
                     Clear Annotations
                   </button>
@@ -1332,7 +1340,7 @@ export function MapShell() {
                     <button
                       type="button"
                       onClick={() => clearAllAnnotations()}
-                      className="inline-flex items-center justify-center rounded-md bg-red-900 text-white px-3 py-2 text-sm hover:opacity-90"
+                      className="inline-flex items-center justify-center rounded-md bg-orange-700 text-white px-3 py-2 text-sm hover:opacity-90"
                     >
                       Confirm clear
                     </button>
