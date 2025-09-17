@@ -493,7 +493,7 @@ export function MapShell() {
         const centerLng = (c[0][0] + c[2][0]) / 2;
         const topLat = c[3][1]; // Use top edge (NW corner latitude)
         // Position label at top edge with small offset down
-        const offsetLat = feetToMeters(10) / 110540; // 10 feet down from top
+        const offsetLat = feetToMeters(20) / 110540; // 20 feet down from top
         const labelLat = topLat - offsetLat;
         features.push({
           type: "Feature",
@@ -543,7 +543,7 @@ export function MapShell() {
         const centerLng = (c[0][0] + c[2][0]) / 2;
         const topLat = c[3][1]; // Use top edge (NW corner latitude)
         // Position label at top edge with small offset down
-        const offsetLat = feetToMeters(10) / 110540; // 10 feet down from top
+        const offsetLat = feetToMeters(20) / 110540; // 20 feet down from top
         const labelLat = topLat - offsetLat;
         features.push({
           type: "Feature",
