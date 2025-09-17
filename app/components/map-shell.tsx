@@ -67,7 +67,7 @@ type AnnotationItem = {
   color: string;
 };
 
-type AnnotationType = "firework" | "audience";
+type AnnotationType = "firework" | "audience" | "measurement";
 
 interface AnnotationRecord {
   type: AnnotationType;
@@ -95,6 +95,17 @@ interface AudienceRecord {
   corners: [number, number][];
 }
 
+interface MeasurementRecord {
+  type: AnnotationType;
+  number: number;
+  id: string;
+  sourceId: string;
+  lineLayerId: string;
+  labelMarker: mapboxgl.Marker;
+  pointMarkers: mapboxgl.Marker[];
+  points: [number, number][];
+}
+
 export function MapShell() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -108,8 +119,10 @@ export function MapShell() {
   const annotationMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const annotationsRef = useRef<Record<string, AnnotationRecord>>({});
   const audienceAreasRef = useRef<Record<string, AudienceRecord>>({});
+  const measurementsRef = useRef<Record<string, MeasurementRecord>>({});
   const fireworkCounterRef = useRef<number>(0);
   const audienceCounterRef = useRef<number>(0);
+  const measurementCounterRef = useRef<number>(0);
   // Reset dialog is controlled by Radix internally via Dialog primitives
   const [showHeight, setShowHeight] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -140,6 +153,7 @@ export function MapShell() {
       { key: "shell-12", label: '12" Shells', inches: 12, color: "#FF5126" },
       { key: "shell-16", label: '16" Shells', inches: 16, color: "#FF5126" },
       { key: "audience", label: "Audience", inches: 0, color: "#0077FF" },
+      { key: "measurement", label: "Measurement", inches: 0, color: "#00AA00" },
     ],
     []
   );
@@ -473,6 +487,38 @@ export function MapShell() {
           },
         } as Feature);
       }
+      // Measurement labels centered on line
+      for (const key of Object.keys(measurementsRef.current)) {
+        const rec = measurementsRef.current[key]!;
+        const p = rec.points;
+        const centerLng = (p[0][0] + p[1][0]) / 2;
+        const centerLat = (p[0][1] + p[1][1]) / 2;
+
+        // Calculate distance for display
+        const lat1 = (p[0][1] * Math.PI) / 180;
+        const lat2 = (p[1][1] * Math.PI) / 180;
+        const deltaLat = ((p[1][1] - p[0][1]) * Math.PI) / 180;
+        const deltaLng = ((p[1][0] - p[0][0]) * Math.PI) / 180;
+
+        const a =
+          Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+          Math.cos(lat1) *
+            Math.cos(lat2) *
+            Math.sin(deltaLng / 2) *
+            Math.sin(deltaLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distanceMeters = 6371000 * c; // Earth radius in meters
+        const distanceFeet = Math.round(metersToFeet(distanceMeters));
+
+        features.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [centerLng, centerLat] },
+          properties: {
+            id: String(distanceFeet),
+            atype: "measurement",
+          },
+        } as Feature);
+      }
 
       if (features.length > 0) {
         try {
@@ -504,9 +550,16 @@ export function MapShell() {
                     "case",
                     ["==", ["get", "atype"], "audience"],
                     ["concat", "Audience ", ["get", "id"]],
+                    ["==", ["get", "atype"], "measurement"],
+                    ["concat", ["get", "id"], " ft"],
                     ["get", "id"],
                   ],
-                  "text-size": 28,
+                  "text-size": [
+                    "case",
+                    ["==", ["get", "atype"], "measurement"],
+                    18,
+                    28,
+                  ],
                   "text-offset": [0, 0],
                   "text-anchor": "center",
                   "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
@@ -830,6 +883,12 @@ export function MapShell() {
     corners: [number, number][]; // 4 corners [lng, lat]
   }
 
+  interface SerializedMeasurement {
+    id: string;
+    number: number;
+    points: [number, number][]; // 2 points [lng, lat]
+  }
+
   interface SerializedState {
     camera: {
       center: [number, number];
@@ -839,6 +898,7 @@ export function MapShell() {
     };
     fireworks: SerializedFirework[];
     audiences: SerializedAudience[];
+    measurements: SerializedMeasurement[];
     showHeight: boolean;
     v: 1;
   }
@@ -945,10 +1005,18 @@ export function MapShell() {
       number: rec.number,
       corners: rec.corners,
     }));
+    const measurements: SerializedMeasurement[] = Object.values(
+      measurementsRef.current
+    ).map((rec) => ({
+      id: rec.id,
+      number: rec.number,
+      points: rec.points,
+    }));
     const state: SerializedState = {
       camera,
       fireworks,
       audiences,
+      measurements,
       showHeight,
       v: 1,
     };
@@ -1226,6 +1294,178 @@ export function MapShell() {
       maxAudienceNum = Math.max(maxAudienceNum, number || 0);
     }
     audienceCounterRef.current = maxAudienceNum;
+    // Restore measurements
+    let maxMeasurementNum = 0;
+    for (const meas of state.measurements) {
+      const points = meas.points as [number, number][];
+      const id =
+        meas.id || `meas-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const number = meas.number;
+      const sourceId = `${id}-src`;
+
+      // Create line feature
+      const lineFeature = {
+        type: "Feature" as const,
+        geometry: {
+          type: "LineString" as const,
+          coordinates: points,
+        },
+        properties: {},
+      };
+
+      map.addSource(sourceId, {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [lineFeature],
+        } as FeatureCollection,
+      });
+
+      map.addLayer({
+        id: `${id}-line`,
+        type: "line",
+        source: sourceId,
+        paint: {
+          "line-color": "#00AA00",
+          "line-opacity": 1,
+          "line-width": 3,
+        },
+      });
+
+      // Create label marker at center of line
+      const centerLng = (points[0][0] + points[1][0]) / 2;
+      const centerLat = (points[0][1] + points[1][1]) / 2;
+
+      const label = document.createElement("div");
+      label.className =
+        "rounded-md px-2 py-1 text-xs shadow bg-background/95 border border-border";
+      label.addEventListener("contextmenu", (evt) => {
+        evt.preventDefault();
+        removeMeasurement(id);
+      });
+
+      const title = document.createElement("div");
+      title.className = "font-medium leading-none";
+      title.textContent = "Measurement";
+
+      const distance = document.createElement("div");
+      distance.className = "text-[10px] text-muted-foreground";
+
+      // Calculate distance
+      const lat1 = (points[0][1] * Math.PI) / 180;
+      const lat2 = (points[1][1] * Math.PI) / 180;
+      const deltaLat = ((points[1][1] - points[0][1]) * Math.PI) / 180;
+      const deltaLng = ((points[1][0] - points[0][0]) * Math.PI) / 180;
+
+      const a =
+        Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+        Math.cos(lat1) *
+          Math.cos(lat2) *
+          Math.sin(deltaLng / 2) *
+          Math.sin(deltaLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distanceMeters = 6371000 * c; // Earth radius in meters
+      const distanceFeet = Math.round(metersToFeet(distanceMeters));
+
+      distance.textContent = `${distanceFeet} ft`;
+
+      label.appendChild(title);
+      label.appendChild(distance);
+
+      const labelMarker = new mapboxgl.Marker({
+        element: label,
+        draggable: true,
+      })
+        .setLngLat([centerLng, centerLat])
+        .addTo(map);
+
+      // Create point markers
+      const pointMarkers: mapboxgl.Marker[] = points.map((point, idx) => {
+        const pointEl = document.createElement("div");
+        pointEl.className =
+          "w-3 h-3 rounded-full border-2 border-white shadow-lg";
+        pointEl.style.backgroundColor = "#00AA00";
+        pointEl.style.cursor = "move";
+
+        const marker = new mapboxgl.Marker({
+          element: pointEl,
+          draggable: true,
+        })
+          .setLngLat(point)
+          .addTo(map);
+
+        const updateMeasurement = () => {
+          const newPoint = marker.getLngLat();
+          const newPoints: [number, number][] = [...points];
+          newPoints[idx] = [newPoint.lng, newPoint.lat];
+
+          // Update line
+          const lineFeature = {
+            type: "Feature" as const,
+            geometry: {
+              type: "LineString" as const,
+              coordinates: newPoints,
+            },
+            properties: {},
+          };
+
+          const src = map.getSource(sourceId) as mapboxgl.GeoJSONSource;
+          src.setData({
+            type: "FeatureCollection",
+            features: [lineFeature],
+          } as FeatureCollection);
+
+          // Update label position and distance
+          const newCenterLng = (newPoints[0][0] + newPoints[1][0]) / 2;
+          const newCenterLat = (newPoints[0][1] + newPoints[1][1]) / 2;
+          labelMarker.setLngLat([newCenterLng, newCenterLat]);
+
+          // Calculate distance
+          const lat1 = (newPoints[0][1] * Math.PI) / 180;
+          const lat2 = (newPoints[1][1] * Math.PI) / 180;
+          const deltaLat =
+            ((newPoints[1][1] - newPoints[0][1]) * Math.PI) / 180;
+          const deltaLng =
+            ((newPoints[1][0] - newPoints[0][0]) * Math.PI) / 180;
+
+          const a =
+            Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+            Math.cos(lat1) *
+              Math.cos(lat2) *
+              Math.sin(deltaLng / 2) *
+              Math.sin(deltaLng / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const distanceMeters = 6371000 * c; // Earth radius in meters
+          const distanceFeet = Math.round(metersToFeet(distanceMeters));
+
+          distance.textContent = `${distanceFeet} ft`;
+
+          // Update points reference
+          points[0] = newPoints[0];
+          points[1] = newPoints[1];
+          measurementsRef.current[id].points = points;
+        };
+
+        marker.on("drag", updateMeasurement);
+        marker.on("dragend", updateMeasurement);
+
+        return marker;
+      });
+
+      measurementsRef.current[id] = {
+        type: "measurement",
+        number,
+        id,
+        sourceId,
+        lineLayerId: `${id}-line`,
+        labelMarker,
+        pointMarkers,
+        points,
+      };
+
+      maxMeasurementNum = Math.max(maxMeasurementNum, number || 0);
+    }
+    measurementCounterRef.current = maxMeasurementNum;
     setShowHeight(state.showHeight);
     // Re-apply camera once more after layers/markers are added to ensure exact alignment
     try {
@@ -1363,6 +1603,22 @@ export function MapShell() {
       rec.cornerMarkers.forEach((cm) => cm.remove());
     } catch {}
     delete audienceAreasRef.current[id];
+  }
+
+  function removeMeasurement(id: string) {
+    const map = mapRef.current;
+    if (!map) return;
+    const rec = measurementsRef.current[id];
+    if (!rec) return;
+    try {
+      if (map.getLayer(rec.lineLayerId)) map.removeLayer(rec.lineLayerId);
+      if (map.getSource(rec.sourceId)) map.removeSource(rec.sourceId);
+    } catch {}
+    try {
+      rec.labelMarker.remove();
+      rec.pointMarkers.forEach((pm) => pm.remove());
+    } catch {}
+    delete measurementsRef.current[id];
   }
 
   function addExtrusionForAnnotation(rec: AnnotationRecord) {
@@ -1599,6 +1855,173 @@ export function MapShell() {
       return;
     }
 
+    if (item.key === "measurement") {
+      // Create measurement with two points ~50ft apart
+      const distanceFt = 50;
+      const distanceMeters = feetToMeters(distanceFt);
+      const metersToLng = (m: number, lat: number) =>
+        m / (111320 * Math.cos((lat * Math.PI) / 180));
+      const metersToLat = (m: number) => m / 110540;
+      const lngOffset = metersToLng(distanceMeters, lngLat.lat);
+      const latOffset = metersToLat(distanceMeters);
+
+      const points: [number, number][] = [
+        [lngLat.lng, lngLat.lat],
+        [lngLat.lng + lngOffset, lngLat.lat + latOffset],
+      ];
+
+      const id = `meas-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const number = ++measurementCounterRef.current;
+      const sourceId = `${id}-src`;
+
+      // Create line feature
+      const lineFeature = {
+        type: "Feature" as const,
+        geometry: {
+          type: "LineString" as const,
+          coordinates: points,
+        },
+        properties: {},
+      };
+
+      mapRef.current.addSource(sourceId, {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [lineFeature],
+        } as FeatureCollection,
+      });
+
+      mapRef.current.addLayer({
+        id: `${id}-line`,
+        type: "line",
+        source: sourceId,
+        paint: {
+          "line-color": item.color,
+          "line-opacity": 1,
+          "line-width": 3,
+        },
+      });
+
+      // Create label marker at center of line
+      const centerLng = (points[0][0] + points[1][0]) / 2;
+      const centerLat = (points[0][1] + points[1][1]) / 2;
+
+      const label = document.createElement("div");
+      label.className =
+        "rounded-md px-2 py-1 text-xs shadow bg-background/95 border border-border";
+      label.addEventListener("contextmenu", (evt) => {
+        evt.preventDefault();
+        removeMeasurement(id);
+      });
+
+      const title = document.createElement("div");
+      title.className = "font-medium leading-none";
+      title.textContent = "Measurement";
+
+      const distance = document.createElement("div");
+      distance.className = "text-[10px] text-muted-foreground";
+      distance.textContent = `${Math.round(distanceFt)} ft`;
+
+      label.appendChild(title);
+      label.appendChild(distance);
+
+      const labelMarker = new mapboxgl.Marker({
+        element: label,
+        draggable: true,
+      })
+        .setLngLat([centerLng, centerLat])
+        .addTo(mapRef.current);
+
+      // Create point markers
+      const pointMarkers: mapboxgl.Marker[] = points.map((point, idx) => {
+        const pointEl = document.createElement("div");
+        pointEl.className =
+          "w-3 h-3 rounded-full border-2 border-white shadow-lg";
+        pointEl.style.backgroundColor = item.color;
+        pointEl.style.cursor = "move";
+
+        const marker = new mapboxgl.Marker({
+          element: pointEl,
+          draggable: true,
+        })
+          .setLngLat(point)
+          .addTo(mapRef.current!);
+
+        const updateMeasurement = () => {
+          const newPoint = marker.getLngLat();
+          const newPoints: [number, number][] = [...points];
+          newPoints[idx] = [newPoint.lng, newPoint.lat];
+
+          // Update line
+          const lineFeature = {
+            type: "Feature" as const,
+            geometry: {
+              type: "LineString" as const,
+              coordinates: newPoints,
+            },
+            properties: {},
+          };
+
+          const src = mapRef.current!.getSource(
+            sourceId
+          ) as mapboxgl.GeoJSONSource;
+          src.setData({
+            type: "FeatureCollection",
+            features: [lineFeature],
+          } as FeatureCollection);
+
+          // Update label position and distance
+          const newCenterLng = (newPoints[0][0] + newPoints[1][0]) / 2;
+          const newCenterLat = (newPoints[0][1] + newPoints[1][1]) / 2;
+          labelMarker.setLngLat([newCenterLng, newCenterLat]);
+
+          // Calculate distance
+          const lat1 = (newPoints[0][1] * Math.PI) / 180;
+          const lat2 = (newPoints[1][1] * Math.PI) / 180;
+          const deltaLat =
+            ((newPoints[1][1] - newPoints[0][1]) * Math.PI) / 180;
+          const deltaLng =
+            ((newPoints[1][0] - newPoints[0][0]) * Math.PI) / 180;
+
+          const a =
+            Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+            Math.cos(lat1) *
+              Math.cos(lat2) *
+              Math.sin(deltaLng / 2) *
+              Math.sin(deltaLng / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const distanceMeters = 6371000 * c; // Earth radius in meters
+          const distanceFeet = Math.round(metersToFeet(distanceMeters));
+
+          distance.textContent = `${distanceFeet} ft`;
+
+          // Update points reference
+          points[0] = newPoints[0];
+          points[1] = newPoints[1];
+          measurementsRef.current[id].points = points;
+        };
+
+        marker.on("drag", updateMeasurement);
+        marker.on("dragend", updateMeasurement);
+
+        return marker;
+      });
+
+      measurementsRef.current[id] = {
+        type: "measurement",
+        number,
+        id,
+        sourceId,
+        lineLayerId: `${id}-line`,
+        labelMarker,
+        pointMarkers,
+        points,
+      };
+
+      return;
+    }
+
     // Firework-type marker and label
     const labelEl = document.createElement("div");
     labelEl.className =
@@ -1727,6 +2150,18 @@ export function MapShell() {
       } catch {}
     }
     audienceAreasRef.current = {};
+    // Remove measurements
+    for (const key of Object.keys(measurementsRef.current)) {
+      const rec = measurementsRef.current[key];
+      try {
+        if (map && map.getLayer(rec.lineLayerId))
+          map.removeLayer(rec.lineLayerId);
+        if (map && map.getSource(rec.sourceId)) map.removeSource(rec.sourceId);
+        rec.labelMarker.remove();
+        rec.pointMarkers.forEach((pm) => pm.remove());
+      } catch {}
+    }
+    measurementsRef.current = {};
   }
 
   return (
@@ -1826,14 +2261,25 @@ export function MapShell() {
                     "text/plain",
                     JSON.stringify({
                       key: a.key,
-                      glyph: a.key === "audience" ? "👥" : "✨",
+                      glyph:
+                        a.key === "audience"
+                          ? "👥"
+                          : a.key === "measurement"
+                          ? "📏"
+                          : "✨",
                     })
                   );
                 }}
                 className="h-9 w-full grid grid-cols-[20px_1fr] items-center text-start gap-0.5 rounded-md border border-border bg-background hover:bg-muted px-2 text-xs"
                 type="button"
               >
-                <span>{a.key === "audience" ? "👥" : "✨"}</span>
+                <span>
+                  {a.key === "audience"
+                    ? "👥"
+                    : a.key === "measurement"
+                    ? "📏"
+                    : "✨"}
+                </span>
                 <span className="truncate">{a.label}</span>
               </button>
             ))}
