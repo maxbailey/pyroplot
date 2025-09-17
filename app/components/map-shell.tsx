@@ -1299,7 +1299,7 @@ export function MapShell() {
       });
       const label = document.createElement("div");
       label.className =
-        "rounded-md px-2 py-1 text-xs shadow bg-background/95 border border-border";
+        "rounded-md px-2 py-1 text-xs shadow bg-background/50 backdrop-blur-sm border border-border text-center";
       label.addEventListener("contextmenu", (evt) => {
         evt.preventDefault();
         removeAudienceArea(id);
@@ -1468,7 +1468,7 @@ export function MapShell() {
 
       const label = document.createElement("div");
       label.className =
-        "rounded-md px-2 py-1 text-xs shadow bg-background/95 border border-border";
+        "rounded-md px-2 py-1 text-xs shadow bg-background/50 backdrop-blur-sm backdrop-blur-sm border border-border text-center";
       label.addEventListener("contextmenu", (evt) => {
         evt.preventDefault();
         removeMeasurement(id);
@@ -1626,7 +1626,7 @@ export function MapShell() {
       });
       const label = document.createElement("div");
       label.className =
-        "rounded-md px-2 py-1 text-xs shadow bg-background/95 border border-border";
+        "rounded-md px-2 py-1 text-xs shadow bg-background/50 backdrop-blur-sm backdrop-blur-sm border border-border text-center";
       label.addEventListener("contextmenu", (evt) => {
         evt.preventDefault();
         removeRestrictedArea(id);
@@ -2020,7 +2020,7 @@ export function MapShell() {
       // Label marker centered
       const label = document.createElement("div");
       label.className =
-        "rounded-md px-2 py-1 text-xs shadow bg-background/95 border border-border";
+        "rounded-md px-2 py-1 text-xs shadow bg-background/50 backdrop-blur-sm backdrop-blur-sm border border-border text-center";
       label.addEventListener("contextmenu", (evt) => {
         evt.preventDefault();
         removeAudienceArea(id);
@@ -2219,7 +2219,7 @@ export function MapShell() {
 
       const label = document.createElement("div");
       label.className =
-        "rounded-md px-2 py-1 text-xs shadow bg-background/95 border border-border";
+        "rounded-md px-2 py-1 text-xs shadow bg-background/50 backdrop-blur-sm backdrop-blur-sm border border-border text-center";
       label.addEventListener("contextmenu", (evt) => {
         evt.preventDefault();
         removeMeasurement(id);
@@ -2375,7 +2375,7 @@ export function MapShell() {
       // Label marker centered
       const label = document.createElement("div");
       label.className =
-        "rounded-md px-2 py-1 text-xs shadow bg-background/95 border border-border";
+        "rounded-md px-2 py-1 text-xs shadow bg-background/50 backdrop-blur-sm backdrop-blur-sm border border-border text-center";
       label.addEventListener("contextmenu", (evt) => {
         evt.preventDefault();
         removeRestrictedArea(id);
@@ -2523,7 +2523,7 @@ export function MapShell() {
     // Firework-type marker and label
     const labelEl = document.createElement("div");
     labelEl.className =
-      "rounded-md bg-background/95 text-foreground shadow-lg border border-border px-2 py-1 text-xs";
+      "rounded-md px-2 py-1 text-xs shadow bg-background/50 backdrop-blur-sm border border-border text-center";
     labelEl.innerHTML = `<div class="font-medium leading-none">${
       item.label
     }</div><div class="text-muted-foreground text-[10px]">${Math.round(
