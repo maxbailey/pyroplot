@@ -113,6 +113,9 @@ export function MapShell() {
   // Reset dialog is controlled by Radix internally via Dialog primitives
   const [showHeight, setShowHeight] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const annotationPalette = useMemo<AnnotationItem[]>(
     () => [
@@ -739,6 +742,446 @@ export function MapShell() {
     }
   }
 
+  // --- Share/Load helpers ---
+  interface SerializedFirework {
+    id: string;
+    number: number;
+    inches: number;
+    label: string;
+    color: string;
+    position: [number, number]; // [lng, lat]
+  }
+
+  interface SerializedAudience {
+    id: string;
+    number: number;
+    corners: [number, number][]; // 4 corners [lng, lat]
+  }
+
+  interface SerializedState {
+    camera: {
+      center: [number, number];
+      zoom: number;
+      bearing: number;
+      pitch: number;
+    };
+    fireworks: SerializedFirework[];
+    audiences: SerializedAudience[];
+    showHeight: boolean;
+    v: 1;
+  }
+
+  function base64UrlEncode(bytes: Uint8Array) {
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++)
+      binary += String.fromCharCode(bytes[i]!);
+    const b64 = btoa(binary);
+    return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+
+  function base64UrlDecode(input: string): Uint8Array {
+    const b64 =
+      input.replace(/-/g, "+").replace(/_/g, "/") +
+      "===".slice((input.length + 3) % 4);
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
+    if ("CompressionStream" in window) {
+      const cs = new CompressionStream("gzip");
+      const ab = data.buffer.slice(
+        data.byteOffset,
+        data.byteOffset + data.byteLength
+      ) as ArrayBuffer;
+      const stream = new Response(new Blob([ab])).body as ReadableStream;
+      const writer = stream.pipeThrough(cs).getReader();
+      const chunks: Uint8Array[] = [];
+      // Collect all chunks
+      while (true) {
+        const { value, done } = await writer.read();
+        if (done) break;
+        if (value) chunks.push(value);
+      }
+      const total = chunks.reduce((n, c) => n + c.length, 0);
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) {
+        out.set(c, off);
+        off += c.length;
+      }
+      return out;
+    }
+    return data; // Fallback: no compression
+  }
+
+  async function gzipDecompress(data: Uint8Array): Promise<Uint8Array> {
+    if ("DecompressionStream" in window) {
+      const ds = new DecompressionStream("gzip");
+      const ab = data.buffer.slice(
+        data.byteOffset,
+        data.byteOffset + data.byteLength
+      ) as ArrayBuffer;
+      const stream = new Response(new Blob([ab])).body as ReadableStream;
+      const writer = stream.pipeThrough(ds).getReader();
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { value, done } = await writer.read();
+        if (done) break;
+        if (value) chunks.push(value);
+      }
+      const total = chunks.reduce((n, c) => n + c.length, 0);
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) {
+        out.set(c, off);
+        off += c.length;
+      }
+      return out;
+    }
+    return data; // Fallback: already plain
+  }
+
+  async function encodeStateToHash(): Promise<string> {
+    if (!mapRef.current) return "";
+    const map = mapRef.current;
+    const camera = {
+      center: [map.getCenter().lng, map.getCenter().lat] as [number, number],
+      zoom: map.getZoom(),
+      bearing: map.getBearing(),
+      pitch: map.getPitch(),
+    };
+    const fireworks: SerializedFirework[] = Object.values(
+      annotationsRef.current
+    ).map((rec) => {
+      const pos = rec.marker.getLngLat();
+      return {
+        id: rec.id,
+        number: rec.number,
+        inches: rec.inches,
+        label: rec.label,
+        color: rec.color,
+        position: [pos.lng, pos.lat],
+      };
+    });
+    const audiences: SerializedAudience[] = Object.values(
+      audienceAreasRef.current
+    ).map((rec) => ({
+      id: rec.id,
+      number: rec.number,
+      corners: rec.corners,
+    }));
+    const state: SerializedState = {
+      camera,
+      fireworks,
+      audiences,
+      showHeight,
+      v: 1,
+    };
+    const json = JSON.stringify(state);
+    const raw = new TextEncoder().encode(json);
+    const gz = await gzipCompress(raw);
+    const data = base64UrlEncode(gz);
+    return `s=${data}`;
+  }
+
+  async function decodeStateFromHash(
+    hash: string
+  ): Promise<SerializedState | null> {
+    try {
+      const params = new URLSearchParams(hash.replace(/^#?/, ""));
+      const enc = params.get("s");
+      if (!enc) return null;
+      const gz = base64UrlDecode(enc);
+      const raw = await gzipDecompress(gz);
+      const json = new TextDecoder().decode(raw);
+      const parsed = JSON.parse(json) as SerializedState;
+      if (!parsed || parsed.v !== 1) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  function restoreFromState(state: SerializedState) {
+    const map = mapRef.current;
+    if (!map) return;
+    // Clear existing
+    clearAllAnnotations();
+    // Camera
+    map.jumpTo({
+      center: state.camera.center,
+      zoom: state.camera.zoom,
+      bearing: state.camera.bearing,
+      pitch: state.camera.pitch,
+    });
+    // Restore fireworks
+    let maxFireworkNum = 0;
+    for (const fw of state.fireworks) {
+      const item: AnnotationItem | undefined = annotationPalette.find(
+        (i) => i.inches === fw.inches && i.key !== "audience"
+      );
+      const color = fw.color || item?.color || "#FF5126";
+      const labelText = fw.label || item?.label || `${fw.inches}\"`;
+      const labelEl = document.createElement("div");
+      labelEl.className =
+        "rounded-md bg-background/95 text-foreground shadow-lg border border-border px-2 py-1 text-xs";
+      const radiusFeet = Math.round(fw.inches * 70);
+      labelEl.innerHTML = `<div class="font-medium leading-none">${labelText}</div><div class="text-muted-foreground text-[10px]">${radiusFeet} ft radius</div>`;
+      const marker = new mapboxgl.Marker({
+        element: labelEl,
+        color,
+        draggable: true,
+      })
+        .setLngLat(fw.position)
+        .addTo(map);
+      annotationMarkersRef.current.push(marker);
+      const radiusMeters = feetToMeters(fw.inches * 70);
+      const circleId =
+        fw.id || `circle-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      labelEl.addEventListener("contextmenu", (evt) => {
+        evt.preventDefault();
+        removeFireworkAnnotation(circleId);
+      });
+      const sourceId = `${circleId}-src`;
+      const feature = createCircleFeature(
+        fw.position[0],
+        fw.position[1],
+        radiusMeters
+      );
+      map.addSource(sourceId, {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [feature],
+        } as FeatureCollection,
+      });
+      map.addLayer({
+        id: circleId,
+        type: "fill",
+        source: sourceId,
+        paint: { "fill-color": color, "fill-opacity": 0.25 },
+      });
+      const lineId = `${circleId}-line`;
+      map.addLayer({
+        id: lineId,
+        type: "line",
+        source: sourceId,
+        paint: { "line-color": color, "line-opacity": 1, "line-width": 2 },
+      });
+      annotationsRef.current[circleId] = {
+        type: "firework",
+        number: fw.number,
+        id: circleId,
+        inches: fw.inches,
+        label: labelText,
+        color,
+        marker,
+        sourceId,
+        fillLayerId: circleId,
+        lineLayerId: lineId,
+      };
+      if (state.showHeight)
+        addExtrusionForAnnotation(annotationsRef.current[circleId]!);
+      const updateCircle = () => {
+        const pos = marker.getLngLat();
+        const updated = createCircleFeature(pos.lng, pos.lat, radiusMeters);
+        const src = map.getSource(sourceId) as mapboxgl.GeoJSONSource;
+        src.setData({
+          type: "FeatureCollection",
+          features: [updated],
+        } as FeatureCollection);
+      };
+      marker.on("drag", updateCircle);
+      marker.on("dragend", updateCircle);
+      maxFireworkNum = Math.max(maxFireworkNum, fw.number || 0);
+    }
+    fireworkCounterRef.current = maxFireworkNum;
+    // Restore audiences
+    let maxAudienceNum = 0;
+    for (const aud of state.audiences) {
+      let corners = normalizeCorners(aud.corners as [number, number][]);
+      const id =
+        aud.id || `aud-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const number = aud.number;
+      const sourceId = `${id}-src`;
+      const rectFeature = createRectangleFeature(corners);
+      map.addSource(sourceId, {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [rectFeature],
+        } as FeatureCollection,
+      });
+      map.addLayer({
+        id: `${id}-fill`,
+        type: "fill",
+        source: sourceId,
+        paint: { "fill-color": "#0077FF", "fill-opacity": 0.2 },
+      });
+      map.addLayer({
+        id: `${id}-line`,
+        type: "line",
+        source: sourceId,
+        paint: { "line-color": "#0077FF", "line-opacity": 1, "line-width": 2 },
+      });
+      const label = document.createElement("div");
+      label.className =
+        "rounded-md px-2 py-1 text-xs shadow bg-background/95 border border-border";
+      label.addEventListener("contextmenu", (evt) => {
+        evt.preventDefault();
+        removeAudienceArea(id);
+      });
+      const title = document.createElement("div");
+      title.className = "font-medium leading-none";
+      title.textContent = "Audience";
+      const dims = document.createElement("div");
+      dims.className = "text-[10px] text-muted-foreground";
+      const centerLat = (corners[0][1] + corners[2][1]) / 2;
+      const metersW =
+        Math.abs(corners[1][0] - corners[0][0]) *
+        111320 *
+        Math.cos((centerLat * Math.PI) / 180);
+      const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
+      dims.textContent = `${Math.round(metersToFeet(metersW))}ft × ${Math.round(
+        metersToFeet(metersH)
+      )}ft`;
+      label.appendChild(title);
+      label.appendChild(dims);
+      const centerLng = (corners[0][0] + corners[2][0]) / 2;
+      const centerLat2 = (corners[0][1] + corners[2][1]) / 2;
+      const labelMarker = new mapboxgl.Marker({
+        element: label,
+        draggable: true,
+      })
+        .setLngLat([centerLng, centerLat2])
+        .addTo(map);
+      const cornerMarkers: mapboxgl.Marker[] = corners.map((c) =>
+        new mapboxgl.Marker({ draggable: true }).setLngLat(c).addTo(map)
+      );
+      const updateRectFromLabel = () => {
+        const cur = labelMarker.getLngLat();
+        const dLng = cur.lng - (corners[0][0] + corners[2][0]) / 2;
+        const dLat = cur.lat - (corners[0][1] + corners[2][1]) / 2;
+        const moved = corners.map(([lng, lat]) => [lng + dLng, lat + dLat]) as [
+          number,
+          number
+        ][];
+        const src = map.getSource(sourceId) as mapboxgl.GeoJSONSource;
+        src.setData({
+          type: "FeatureCollection",
+          features: [createRectangleFeature(moved)],
+        } as FeatureCollection);
+        moved.forEach((c, i) => cornerMarkers[i].setLngLat(c));
+        corners = moved;
+        audienceAreasRef.current[id].corners = moved;
+        const centerLatNow = (moved[0][1] + moved[2][1]) / 2;
+        const metersWNow =
+          Math.abs(moved[1][0] - moved[0][0]) *
+          111320 *
+          Math.cos((centerLatNow * Math.PI) / 180);
+        const metersHNow = Math.abs(moved[3][1] - moved[0][1]) * 110540;
+        dims.textContent = `${Math.round(
+          metersToFeet(metersWNow)
+        )}ft × ${Math.round(metersToFeet(metersHNow))}ft`;
+      };
+      labelMarker.on("drag", updateRectFromLabel);
+      labelMarker.on("dragend", updateRectFromLabel);
+      cornerMarkers.forEach((cm, idx) => {
+        const updateRect = () => {
+          const cur = cm.getLngLat();
+          const oppIdx = (idx + 2) % 4;
+          const anchorLng = corners[oppIdx][0];
+          const anchorLat = corners[oppIdx][1];
+          const minFt = 20;
+          const minLngDelta =
+            feetToMeters(minFt) /
+            (111320 * Math.cos((anchorLat * Math.PI) / 180));
+          const minLatDelta = feetToMeters(minFt) / 110540;
+          const sLng = idx === 0 || idx === 3 ? -1 : 1;
+          const sLat = idx === 0 || idx === 1 ? -1 : 1;
+          let dragLng = cur.lng;
+          let dragLat = cur.lat;
+          if (sLng > 0) dragLng = Math.max(anchorLng + minLngDelta, dragLng);
+          else dragLng = Math.min(anchorLng - minLngDelta, dragLng);
+          if (sLat > 0) dragLat = Math.max(anchorLat + minLatDelta, dragLat);
+          else dragLat = Math.min(anchorLat - minLatDelta, dragLat);
+          let newCorners: [number, number][] = [...corners] as [
+            number,
+            number
+          ][];
+          newCorners[oppIdx] = [anchorLng, anchorLat];
+          newCorners[idx] = [dragLng, dragLat];
+          newCorners[(idx + 1) % 4] = [dragLng, anchorLat];
+          newCorners[(idx + 3) % 4] = [anchorLng, dragLat];
+          newCorners = normalizeCorners(newCorners);
+          corners = newCorners;
+          const src = map.getSource(sourceId) as mapboxgl.GeoJSONSource;
+          src.setData({
+            type: "FeatureCollection",
+            features: [createRectangleFeature(corners)],
+          } as FeatureCollection);
+          const newCenterLng = (corners[0][0] + corners[2][0]) / 2;
+          const newCenterLat = (corners[0][1] + corners[2][1]) / 2;
+          labelMarker.setLngLat([newCenterLng, newCenterLat]);
+          const metersW2 =
+            Math.abs(corners[1][0] - corners[0][0]) *
+            111320 *
+            Math.cos((newCenterLat * Math.PI) / 180);
+          const metersH2 = Math.abs(corners[3][1] - corners[0][1]) * 110540;
+          dims.textContent = `${Math.round(
+            metersToFeet(metersW2)
+          )}ft × ${Math.round(metersToFeet(metersH2))}ft`;
+          audienceAreasRef.current[id].corners = corners;
+          corners.forEach((p, i) => cornerMarkers[i].setLngLat(p));
+        };
+        cm.on("drag", updateRect);
+        cm.on("dragend", updateRect);
+      });
+      audienceAreasRef.current[id] = {
+        type: "audience",
+        number,
+        id,
+        sourceId,
+        fillLayerId: `${id}-fill`,
+        lineLayerId: `${id}-line`,
+        labelMarker,
+        cornerMarkers,
+        corners,
+      };
+      maxAudienceNum = Math.max(maxAudienceNum, number || 0);
+    }
+    audienceCounterRef.current = maxAudienceNum;
+    setShowHeight(state.showHeight);
+  }
+
+  // Load state from URL hash on ready
+  useEffect(() => {
+    if (!isMapReady) return;
+    const run = async () => {
+      const state = await decodeStateFromHash(window.location.hash || "");
+      if (state) restoreFromState(state);
+    };
+    void run();
+    // optional: handle hashchange
+    const onHash = () => void run();
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+    // Intentionally not including decodeStateFromHash/restoreFromState to avoid re-runs.
+    // These are stable across the component lifecycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMapReady]);
+
+  async function openShareDialog() {
+    const q = await encodeStateToHash();
+    const url = `${window.location.origin}${window.location.pathname}#${q}`;
+    setShareUrl(url);
+    setCopied(false);
+    setShareOpen(true);
+  }
+
   function normalizeCorners(input: [number, number][]): [number, number][] {
     const lngs = input.map((c) => c[0]);
     const lats = input.map((c) => c[1]);
@@ -1362,6 +1805,63 @@ export function MapShell() {
             >
               {isGenerating ? "Generating…" : "Generate Site Plan"}
             </button>
+            <Dialog
+              open={shareOpen}
+              onOpenChange={(open) => {
+                setShareOpen(open);
+                if (!open) setCopied(false);
+              }}
+            >
+              <div className="flex justify-between items-center gap-2">
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => void openShareDialog()}
+                    className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    Share Site Plan
+                  </button>
+                </DialogTrigger>
+              </div>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Share this site plan</DialogTitle>
+                  <DialogDescription>
+                    Copy this link to share. Opening it restores the current
+                    camera and annotations.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <input
+                    value={shareUrl}
+                    readOnly
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(shareUrl);
+                          setCopied(true);
+                        } catch {}
+                      }}
+                      className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                    >
+                      {copied ? "✓ Copied Link" : "Copy link"}
+                    </button>
+                    <DialogClose asChild>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                      >
+                        Close
+                      </button>
+                    </DialogClose>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
             <Dialog>
               <div className="flex justify-between items-center gap-2">
                 <DialogTrigger asChild>
