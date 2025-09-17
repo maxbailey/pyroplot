@@ -182,6 +182,13 @@ export function MapShell() {
 
   useEffect(() => {
     if (!isMapReady || !mapRef.current) return;
+    // If a shared state hash is present, skip geolocation to avoid overriding the saved camera
+    try {
+      const hasShared = new URLSearchParams(
+        (window.location.hash || "").replace(/^#?/, "")
+      ).has("s");
+      if (hasShared) return;
+    } catch {}
     if (!("geolocation" in navigator)) return;
 
     navigator.geolocation.getCurrentPosition(
@@ -910,7 +917,7 @@ export function MapShell() {
     if (!map) return;
     // Clear existing
     clearAllAnnotations();
-    // Camera
+    // Initialize camera early
     map.jumpTo({
       center: state.camera.center,
       zoom: state.camera.zoom,
@@ -1155,6 +1162,15 @@ export function MapShell() {
     }
     audienceCounterRef.current = maxAudienceNum;
     setShowHeight(state.showHeight);
+    // Re-apply camera once more after layers/markers are added to ensure exact alignment
+    try {
+      map.jumpTo({
+        center: state.camera.center,
+        zoom: state.camera.zoom,
+        bearing: state.camera.bearing,
+        pitch: state.camera.pitch,
+      });
+    } catch {}
   }
 
   // Load state from URL hash on ready
