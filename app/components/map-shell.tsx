@@ -2994,7 +2994,7 @@ export function MapShell() {
                           ? "📐"
                           : a.key === "restricted"
                           ? "🚫"
-                          : "💣",
+                          : "🧨",
                     })
                   );
                 }}
@@ -3008,7 +3008,7 @@ export function MapShell() {
                     ? "📐"
                     : a.key === "restricted"
                     ? "🚫"
-                    : "💣"}
+                    : "🧨"}
                 </span>
                 <span className="truncate">{a.label}</span>
               </button>
@@ -3217,7 +3217,7 @@ export function MapShell() {
             </Dialog>
           </div>
           <p className="mt-6 text-xs text-muted-foreground text-center">
-            © 2025 Pyro Plot. All rights reserved.
+            © {new Date().getFullYear()} Pyro Plot. All rights reserved.
             <br />
             For planning only, not a substitute for safety training or legal
             approval.{" "}
