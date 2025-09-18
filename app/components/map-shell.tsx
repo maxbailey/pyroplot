@@ -14,6 +14,13 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 // Removed slider; we switch whole styles for performance
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
@@ -145,6 +152,131 @@ export function MapShell() {
   const [copied, setCopied] = useState(false);
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  type MeasurementUnit = "feet" | "meters";
+  const [measurementUnit, setMeasurementUnit] =
+    useState<MeasurementUnit>("feet");
+
+  const unitLabel = measurementUnit === "feet" ? "ft" : "m";
+
+  function formatDistanceWithSpace(meters: number): string {
+    if (measurementUnit === "feet") {
+      return `${Math.round(metersToFeet(meters))} ft`;
+    }
+    return `${Math.round(meters)} m`;
+  }
+
+  function formatLengthNoSpace(meters: number): string {
+    if (measurementUnit === "feet") {
+      return `${Math.round(metersToFeet(meters))}ft`;
+    }
+    return `${Math.round(meters)}m`;
+  }
+
+  function refreshAllMeasurementTexts() {
+    const map = mapRef.current;
+    if (!map) return;
+    // Measurements
+    for (const key of Object.keys(measurementsRef.current)) {
+      const rec = measurementsRef.current[key]!;
+      const pts = rec.points;
+      const lat1 = (pts[0][1] * Math.PI) / 180;
+      const lat2 = (pts[1][1] * Math.PI) / 180;
+      const deltaLat = ((pts[1][1] - pts[0][1]) * Math.PI) / 180;
+      const deltaLng = ((pts[1][0] - pts[0][0]) * Math.PI) / 180;
+      const a =
+        Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+        Math.cos(lat1) *
+          Math.cos(lat2) *
+          Math.sin(deltaLng / 2) *
+          Math.sin(deltaLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distanceMeters = 6371000 * c;
+      const el = rec.labelMarker.getElement();
+      let distanceDiv = el.querySelector(
+        '[data-role="distance"]'
+      ) as HTMLDivElement | null;
+      if (!distanceDiv) {
+        distanceDiv = el.querySelector(
+          "div:nth-child(2)"
+        ) as HTMLDivElement | null;
+        if (distanceDiv) distanceDiv.setAttribute("data-role", "distance");
+      }
+      if (distanceDiv)
+        distanceDiv.textContent = formatDistanceWithSpace(distanceMeters);
+    }
+    // Audience areas
+    for (const key of Object.keys(audienceAreasRef.current)) {
+      const rec = audienceAreasRef.current[key]!;
+      const c = rec.corners;
+      const centerLat = (c[0][1] + c[2][1]) / 2;
+      const metersW =
+        Math.abs(c[1][0] - c[0][0]) *
+        111320 *
+        Math.cos((centerLat * Math.PI) / 180);
+      const metersH = Math.abs(c[3][1] - c[0][1]) * 110540;
+      const root = rec.labelMarker.getElement();
+      let div = root.querySelector(
+        '[data-role="dims"]'
+      ) as HTMLDivElement | null;
+      if (!div) {
+        div = root.querySelector("div:nth-child(2)") as HTMLDivElement | null;
+        if (div) div.setAttribute("data-role", "dims");
+      }
+      if (div)
+        div.textContent = `${formatLengthNoSpace(
+          metersW
+        )} × ${formatLengthNoSpace(metersH)}`;
+    }
+    // Restricted areas
+    for (const key of Object.keys(restrictedAreasRef.current)) {
+      const rec = restrictedAreasRef.current[key]!;
+      const c = rec.corners;
+      const centerLat = (c[0][1] + c[2][1]) / 2;
+      const metersW =
+        Math.abs(c[1][0] - c[0][0]) *
+        111320 *
+        Math.cos((centerLat * Math.PI) / 180);
+      const metersH = Math.abs(c[3][1] - c[0][1]) * 110540;
+      const root = rec.labelMarker.getElement();
+      let div = root.querySelector(
+        '[data-role="dims"]'
+      ) as HTMLDivElement | null;
+      if (!div) {
+        div = root.querySelector("div:nth-child(2)") as HTMLDivElement | null;
+        if (div) div.setAttribute("data-role", "dims");
+      }
+      if (div)
+        div.textContent = `${formatLengthNoSpace(
+          metersW
+        )} × ${formatLengthNoSpace(metersH)}`;
+    }
+    // Firework radius labels
+    for (const key of Object.keys(annotationsRef.current)) {
+      const rec = annotationsRef.current[key]!;
+      if (rec.type !== "firework") continue;
+      const el = rec.marker.getElement();
+      const second = el.querySelector(
+        "div:nth-child(2)"
+      ) as HTMLDivElement | null;
+      if (!second) continue;
+      const radiusFeet = Math.round(rec.inches * 70);
+      const text =
+        measurementUnit === "feet"
+          ? `${radiusFeet} ft radius`
+          : `${Math.round(feetToMeters(radiusFeet))} m radius`;
+      second.textContent = text;
+    }
+  }
+
+  useEffect(() => {
+    // Recompute and rewrite all visible annotation label texts when unit changes
+    if (!isMapReady) return;
+    try {
+      refreshAllMeasurementTexts();
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measurementUnit, isMapReady]);
 
   const annotationPalette = useMemo<AnnotationItem[]>(
     () => [
@@ -527,13 +659,18 @@ export function MapShell() {
             Math.sin(deltaLng / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const distanceMeters = 6371000 * c; // Earth radius in meters
-        const distanceFeet = Math.round(metersToFeet(distanceMeters));
+        const unitSuffix = measurementUnit === "feet" ? "ft" : "m";
+        const distanceVal =
+          measurementUnit === "feet"
+            ? Math.round(metersToFeet(distanceMeters))
+            : Math.round(distanceMeters);
 
         features.push({
           type: "Feature",
           geometry: { type: "Point", coordinates: [centerLng, centerLat] },
           properties: {
-            id: String(distanceFeet),
+            id: String(distanceVal),
+            units: unitSuffix,
             atype: "measurement",
           },
         } as Feature);
@@ -588,7 +725,7 @@ export function MapShell() {
                     ["==", ["get", "atype"], "audience"],
                     ["concat", "Audience ", ["get", "id"]],
                     ["==", ["get", "atype"], "measurement"],
-                    ["concat", ["get", "id"], " ft"],
+                    ["concat", ["get", "id"], " ", ["get", "units"]],
                     ["==", ["get", "atype"], "restricted"],
                     ["concat", "Restricted ", ["get", "id"]],
                     ["get", "id"],
@@ -783,7 +920,7 @@ export function MapShell() {
       const headerYMid = y + headerH / 2 + 3;
       pdf.text("ID/#", colX[0], headerYMid);
       pdf.text("Label", colX[1], headerYMid);
-      pdf.text("Fallout Radius (ft)", colX[2], headerYMid);
+      pdf.text(`Fallout Radius (${unitLabel})`, colX[2], headerYMid);
       pdf.text("Lat, Lng", colX[3], headerYMid);
       y += headerH + rowGap;
 
@@ -796,7 +933,11 @@ export function MapShell() {
         const pos = rec.marker.getLngLat();
         const id = String(rec.number);
         const label = rec.label;
-        const radius = Math.round(rec.inches * 70).toString();
+        const radius = (
+          measurementUnit === "feet"
+            ? Math.round(rec.inches * 70)
+            : Math.round(feetToMeters(rec.inches * 70))
+        ).toString();
         const latlng = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
 
         const rowH = 26;
@@ -810,7 +951,7 @@ export function MapShell() {
           pdf.setFontSize(11);
           pdf.text("ID/#", colX[0], hY);
           pdf.text("Label", colX[1], hY);
-          pdf.text("Fallout Radius (ft)", colX[2], hY);
+          pdf.text(`Fallout Radius (${unitLabel})`, colX[2], hY);
           pdf.text("Lat, Lng", colX[3], hY);
           y += headerH + rowGap;
           pdf.setFont("helvetica", "normal");
@@ -838,7 +979,7 @@ export function MapShell() {
       const aHeaderYMid = y + headerH / 2 + 3;
       pdf.text("ID/#", aColX[0], aHeaderYMid);
       pdf.text("Label", aColX[1], aHeaderYMid);
-      pdf.text("Dimensions (ft)", aColX[2], aHeaderYMid);
+      pdf.text(`Dimensions (${unitLabel})`, aColX[2], aHeaderYMid);
       pdf.text("Corners (lat, lng)", aColX[3], aHeaderYMid);
       y += headerH + rowGap;
 
@@ -857,9 +998,15 @@ export function MapShell() {
           111320 *
           Math.cos((centerLat * Math.PI) / 180);
         const metersH = Math.abs(c[3][1] - c[0][1]) * 110540;
-        const widthFt = Math.round(metersToFeet(metersW));
-        const heightFt = Math.round(metersToFeet(metersH));
-        const dims = `${widthFt} × ${heightFt}`;
+        const widthVal =
+          measurementUnit === "feet"
+            ? Math.round(metersToFeet(metersW))
+            : Math.round(metersW);
+        const heightVal =
+          measurementUnit === "feet"
+            ? Math.round(metersToFeet(metersH))
+            : Math.round(metersH);
+        const dims = `${widthVal} × ${heightVal}`;
         const cornerLines = [
           `${c[0][1].toFixed(6)}, ${c[0][0].toFixed(6)}`,
           `${c[1][1].toFixed(6)}, ${c[1][0].toFixed(6)}`,
@@ -878,7 +1025,7 @@ export function MapShell() {
           pdf.setFontSize(11);
           pdf.text("ID/#", aColX[0], hY);
           pdf.text("Label", aColX[1], hY);
-          pdf.text("Dimensions (ft)", aColX[2], hY);
+          pdf.text(`Dimensions (${unitLabel})`, aColX[2], hY);
           pdf.text("Corners (lat, lng)", aColX[3], hY);
           y += headerH + rowGap;
           pdf.setFont("helvetica", "normal");
@@ -912,7 +1059,7 @@ export function MapShell() {
       const rHeaderYMid = y + headerH / 2 + 3;
       pdf.text("ID/#", rColX[0], rHeaderYMid);
       pdf.text("Label", rColX[1], rHeaderYMid);
-      pdf.text("Dimensions (ft)", rColX[2], rHeaderYMid);
+      pdf.text(`Dimensions (${unitLabel})`, rColX[2], rHeaderYMid);
       pdf.text("Corners (lat, lng)", rColX[3], rHeaderYMid);
       y += headerH + rowGap;
 
@@ -931,9 +1078,15 @@ export function MapShell() {
           111320 *
           Math.cos((centerLat * Math.PI) / 180);
         const metersH = Math.abs(c[3][1] - c[0][1]) * 110540;
-        const widthFt = Math.round(metersToFeet(metersW));
-        const heightFt = Math.round(metersToFeet(metersH));
-        const dims = `${widthFt} × ${heightFt}`;
+        const widthValR =
+          measurementUnit === "feet"
+            ? Math.round(metersToFeet(metersW))
+            : Math.round(metersW);
+        const heightValR =
+          measurementUnit === "feet"
+            ? Math.round(metersToFeet(metersH))
+            : Math.round(metersH);
+        const dims = `${widthValR} × ${heightValR}`;
         const cornerLines = [
           `${c[0][1].toFixed(6)}, ${c[0][0].toFixed(6)}`,
           `${c[1][1].toFixed(6)}, ${c[1][0].toFixed(6)}`,
@@ -952,7 +1105,7 @@ export function MapShell() {
           pdf.setFontSize(11);
           pdf.text("ID/#", rColX[0], hY);
           pdf.text("Label", rColX[1], hY);
-          pdf.text("Dimensions (ft)", rColX[2], hY);
+          pdf.text(`Dimensions (${unitLabel})`, rColX[2], hY);
           pdf.text("Corners (lat, lng)", rColX[3], hY);
           y += headerH + rowGap;
           pdf.setFont("helvetica", "normal");
@@ -1024,6 +1177,7 @@ export function MapShell() {
     measurements: SerializedMeasurement[];
     restricted: SerializedRestricted[];
     showHeight: boolean;
+    measurementUnit?: "feet" | "meters";
     v: 1;
   }
 
@@ -1150,6 +1304,7 @@ export function MapShell() {
       measurements,
       restricted,
       showHeight,
+      measurementUnit,
       v: 1,
     };
     const json = JSON.stringify(state);
@@ -1189,6 +1344,14 @@ export function MapShell() {
       bearing: state.camera.bearing,
       pitch: state.camera.pitch,
     });
+    if (
+      state.measurementUnit === "feet" ||
+      state.measurementUnit === "meters"
+    ) {
+      setMeasurementUnit(state.measurementUnit);
+      // defer refresh until elements exist
+      setTimeout(() => refreshAllMeasurementTexts(), 0);
+    }
     // Restore fireworks
     let maxFireworkNum = 0;
     for (const fw of state.fireworks) {
@@ -1201,7 +1364,11 @@ export function MapShell() {
       labelEl.className =
         "rounded-md bg-background/95 text-foreground shadow-lg border border-border px-2 py-1 text-xs";
       const radiusFeet = Math.round(fw.inches * 70);
-      labelEl.innerHTML = `<div class="font-medium leading-none">${labelText}</div><div class="text-muted-foreground text-[10px]">${radiusFeet} ft radius</div>`;
+      const radiusText =
+        measurementUnit === "feet"
+          ? `${radiusFeet} ft radius`
+          : `${Math.round(feetToMeters(radiusFeet))} m radius`;
+      labelEl.innerHTML = `<div class="font-medium leading-none">${labelText}</div><div class="text-muted-foreground text-[10px]">${radiusText}</div>`;
       const marker = new mapboxgl.Marker({
         element: labelEl,
         color,
@@ -1311,15 +1478,17 @@ export function MapShell() {
       title.textContent = "Audience";
       const dims = document.createElement("div");
       dims.className = "text-[10px] text-muted-foreground";
+      dims.setAttribute("data-role", "dims");
+      dims.setAttribute("data-role", "dims");
       const centerLat = (corners[0][1] + corners[2][1]) / 2;
       const metersW =
         Math.abs(corners[1][0] - corners[0][0]) *
         111320 *
         Math.cos((centerLat * Math.PI) / 180);
       const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
-      dims.textContent = `${Math.round(metersToFeet(metersW))}ft × ${Math.round(
-        metersToFeet(metersH)
-      )}ft`;
+      dims.textContent = `${formatLengthNoSpace(
+        metersW
+      )} × ${formatLengthNoSpace(metersH)}`;
       label.appendChild(title);
       label.appendChild(dims);
       const centerLng = (corners[0][0] + corners[2][0]) / 2;
@@ -1355,9 +1524,9 @@ export function MapShell() {
           111320 *
           Math.cos((centerLatNow * Math.PI) / 180);
         const metersHNow = Math.abs(moved[3][1] - moved[0][1]) * 110540;
-        dims.textContent = `${Math.round(
-          metersToFeet(metersWNow)
-        )}ft × ${Math.round(metersToFeet(metersHNow))}ft`;
+        dims.textContent = `${formatLengthNoSpace(
+          metersWNow
+        )} × ${formatLengthNoSpace(metersHNow)}`;
       };
       labelMarker.on("drag", updateRectFromLabel);
       labelMarker.on("dragend", updateRectFromLabel);
@@ -1403,9 +1572,9 @@ export function MapShell() {
             111320 *
             Math.cos((newCenterLat * Math.PI) / 180);
           const metersH2 = Math.abs(corners[3][1] - corners[0][1]) * 110540;
-          dims.textContent = `${Math.round(
-            metersToFeet(metersW2)
-          )}ft × ${Math.round(metersToFeet(metersH2))}ft`;
+          dims.textContent = `${formatLengthNoSpace(
+            metersW2
+          )} × ${formatLengthNoSpace(metersH2)}`;
           audienceAreasRef.current[id].corners = corners;
           corners.forEach((p, i) => cornerMarkers[i].setLngLat(p));
         };
@@ -1482,6 +1651,7 @@ export function MapShell() {
 
       const distance = document.createElement("div");
       distance.className = "text-[10px] text-muted-foreground";
+      distance.setAttribute("data-role", "distance");
 
       // Calculate distance
       const lat1 = (points[0][1] * Math.PI) / 180;
@@ -1497,9 +1667,7 @@ export function MapShell() {
           Math.sin(deltaLng / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const distanceMeters = 6371000 * c; // Earth radius in meters
-      const distanceFeet = Math.round(metersToFeet(distanceMeters));
-
-      distance.textContent = `${distanceFeet} ft`;
+      distance.textContent = formatDistanceWithSpace(distanceMeters);
 
       label.appendChild(title);
       label.appendChild(distance);
@@ -1568,9 +1736,7 @@ export function MapShell() {
               Math.sin(deltaLng / 2);
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
           const distanceMeters = 6371000 * c; // Earth radius in meters
-          const distanceFeet = Math.round(metersToFeet(distanceMeters));
-
-          distance.textContent = `${distanceFeet} ft`;
+          distance.textContent = formatDistanceWithSpace(distanceMeters);
 
           // Update points reference
           points[0] = newPoints[0];
@@ -1638,15 +1804,17 @@ export function MapShell() {
       title.textContent = "Restricted";
       const dims = document.createElement("div");
       dims.className = "text-[10px] text-muted-foreground";
+      dims.setAttribute("data-role", "dims");
+      dims.setAttribute("data-role", "dims");
       const centerLat = (corners[0][1] + corners[2][1]) / 2;
       const metersW =
         Math.abs(corners[1][0] - corners[0][0]) *
         111320 *
         Math.cos((centerLat * Math.PI) / 180);
       const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
-      dims.textContent = `${Math.round(metersToFeet(metersW))}ft × ${Math.round(
-        metersToFeet(metersH)
-      )}ft`;
+      dims.textContent = `${formatLengthNoSpace(
+        metersW
+      )} × ${formatLengthNoSpace(metersH)}`;
       label.appendChild(title);
       label.appendChild(dims);
       const centerLng = (corners[0][0] + corners[2][0]) / 2;
@@ -1682,9 +1850,9 @@ export function MapShell() {
           111320 *
           Math.cos((centerLatNow * Math.PI) / 180);
         const metersHNow = Math.abs(moved[3][1] - moved[0][1]) * 110540;
-        dims.textContent = `${Math.round(
-          metersToFeet(metersWNow)
-        )}ft × ${Math.round(metersToFeet(metersHNow))}ft`;
+        dims.textContent = `${formatLengthNoSpace(
+          metersWNow
+        )} × ${formatLengthNoSpace(metersHNow)}`;
       };
       labelMarker.on("drag", updateRectFromLabel);
       labelMarker.on("dragend", updateRectFromLabel);
@@ -1730,9 +1898,9 @@ export function MapShell() {
             111320 *
             Math.cos((newCenterLat * Math.PI) / 180);
           const metersH2 = Math.abs(corners[3][1] - corners[0][1]) * 110540;
-          dims.textContent = `${Math.round(
-            metersToFeet(metersW2)
-          )}ft × ${Math.round(metersToFeet(metersH2))}ft`;
+          dims.textContent = `${formatLengthNoSpace(
+            metersW2
+          )} × ${formatLengthNoSpace(metersH2)}`;
           restrictedAreasRef.current[id].corners = corners;
           corners.forEach((p, i) => cornerMarkers[i].setLngLat(p));
         };
@@ -2032,9 +2200,11 @@ export function MapShell() {
       title.textContent = "Audience";
       const dims = document.createElement("div");
       dims.className = "text-[10px] text-muted-foreground";
-      const widthFeetText = Math.round(widthFt);
-      const heightFeetText = Math.round(heightFt);
-      dims.textContent = `${widthFeetText}ft × ${heightFeetText}ft`;
+      dims.setAttribute("data-role", "dims");
+      dims.setAttribute("data-role", "dims");
+      dims.textContent = `${formatLengthNoSpace(
+        metersW
+      )} × ${formatLengthNoSpace(metersH)}`;
       label.appendChild(title);
       label.appendChild(dims);
       // Position label at top middle, 20ft off the top
@@ -2082,9 +2252,9 @@ export function MapShell() {
           Math.cos((centerLatNow * Math.PI) / 180);
         const metersHNow =
           Math.abs(movedCorners[3][1] - movedCorners[0][1]) * 110540;
-        dims.textContent = `${Math.round(
-          metersToFeet(metersWNow)
-        )}ft × ${Math.round(metersToFeet(metersHNow))}ft`;
+        dims.textContent = `${formatLengthNoSpace(
+          metersWNow
+        )} × ${formatLengthNoSpace(metersHNow)}`;
       };
       labelMarker.on("drag", onLabelDrag);
       labelMarker.on("dragend", onLabelDrag);
@@ -2142,9 +2312,9 @@ export function MapShell() {
             111320 *
             Math.cos((newTopMiddleLat * Math.PI) / 180);
           const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
-          dims.textContent = `${Math.round(
-            metersToFeet(metersW)
-          )}ft × ${Math.round(metersToFeet(metersH))}ft`;
+          dims.textContent = `${formatLengthNoSpace(
+            metersW
+          )} × ${formatLengthNoSpace(metersH)}`;
           audienceAreasRef.current[id].corners = corners;
           // move all corner pins in realtime to their new corners
           corners.forEach((p, i) => cornerMarkers[i].setLngLat(p));
@@ -2230,7 +2400,8 @@ export function MapShell() {
 
       const distance = document.createElement("div");
       distance.className = "text-[10px] text-muted-foreground";
-      distance.textContent = `${Math.round(distanceFt)} ft`;
+      distance.setAttribute("data-role", "distance");
+      distance.textContent = formatDistanceWithSpace(distanceMeters);
 
       label.appendChild(title);
       label.appendChild(distance);
@@ -2301,9 +2472,7 @@ export function MapShell() {
               Math.sin(deltaLng / 2);
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
           const distanceMeters = 6371000 * c; // Earth radius in meters
-          const distanceFeet = Math.round(metersToFeet(distanceMeters));
-
-          distance.textContent = `${distanceFeet} ft`;
+          distance.textContent = formatDistanceWithSpace(distanceMeters);
 
           // Update points reference
           points[0] = newPoints[0];
@@ -2428,9 +2597,10 @@ export function MapShell() {
       title.textContent = "Restricted";
       const dims = document.createElement("div");
       dims.className = "text-[10px] text-muted-foreground";
-      const widthFeetText = Math.round(widthFt);
-      const heightFeetText = Math.round(heightFt);
-      dims.textContent = `${widthFeetText}ft × ${heightFeetText}ft`;
+      dims.setAttribute("data-role", "dims");
+      dims.textContent = `${formatLengthNoSpace(
+        metersW
+      )} × ${formatLengthNoSpace(metersH)}`;
       label.appendChild(title);
       label.appendChild(dims);
       // Position label at top middle, 20ft off the top
@@ -2478,9 +2648,9 @@ export function MapShell() {
           Math.cos((centerLatNow * Math.PI) / 180);
         const metersHNow =
           Math.abs(movedCorners[3][1] - movedCorners[0][1]) * 110540;
-        dims.textContent = `${Math.round(
-          metersToFeet(metersWNow)
-        )}ft × ${Math.round(metersToFeet(metersHNow))}ft`;
+        dims.textContent = `${formatLengthNoSpace(
+          metersWNow
+        )} × ${formatLengthNoSpace(metersHNow)}`;
       };
       labelMarker.on("drag", onLabelDrag);
       labelMarker.on("dragend", onLabelDrag);
@@ -2538,9 +2708,9 @@ export function MapShell() {
             111320 *
             Math.cos((newTopMiddleLat * Math.PI) / 180);
           const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
-          dims.textContent = `${Math.round(
-            metersToFeet(metersW)
-          )}ft × ${Math.round(metersToFeet(metersH))}ft`;
+          dims.textContent = `${formatLengthNoSpace(
+            metersW
+          )} × ${formatLengthNoSpace(metersH)}`;
           restrictedAreasRef.current[id].corners = corners;
           // move all corner pins in realtime to their new corners
           corners.forEach((p, i) => cornerMarkers[i].setLngLat(p));
@@ -2567,11 +2737,12 @@ export function MapShell() {
     const labelEl = document.createElement("div");
     labelEl.className =
       "rounded-md px-2 py-1 text-xs shadow bg-background/50 backdrop-blur-sm border border-border text-center";
-    labelEl.innerHTML = `<div class="font-medium leading-none">${
-      item.label
-    }</div><div class="text-muted-foreground text-[10px]">${Math.round(
-      item.inches * 70
-    )} ft radius</div>`;
+    const fwRadiusFeet = Math.round(item.inches * 70);
+    const fwRadiusText =
+      measurementUnit === "feet"
+        ? `${fwRadiusFeet} ft radius`
+        : `${Math.round(feetToMeters(fwRadiusFeet))} m radius`;
+    labelEl.innerHTML = `<div class="font-medium leading-none">${item.label}</div><div class="text-muted-foreground text-[10px]">${fwRadiusText}</div>`;
     const marker = new mapboxgl.Marker({
       element: labelEl,
       color: item.color,
@@ -2850,6 +3021,60 @@ export function MapShell() {
             Actions
           </div>
           <div className="flex flex-col items-stretch gap-2">
+            <Dialog
+              open={settingsOpen}
+              onOpenChange={(o) => setSettingsOpen(o)}
+            >
+              <div className="flex justify-between items-center gap-2">
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    Settings
+                  </button>
+                </DialogTrigger>
+              </div>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Settings</DialogTitle>
+                  <DialogDescription>
+                    Configure application preferences.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">
+                      Measurement Unit
+                    </label>
+                    <Select
+                      value={measurementUnit}
+                      onValueChange={(v) => {
+                        setMeasurementUnit(v as MeasurementUnit);
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="feet">Feet</SelectItem>
+                        <SelectItem value="meters">Meters</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                    >
+                      Close
+                    </button>
+                  </DialogClose>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <button
               type="button"
               onClick={() => {
