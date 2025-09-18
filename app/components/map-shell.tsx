@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 // Removed slider; we switch whole styles for performance
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
@@ -156,6 +157,34 @@ export function MapShell() {
   type MeasurementUnit = "feet" | "meters";
   const [measurementUnit, setMeasurementUnit] =
     useState<MeasurementUnit>("feet");
+
+  // Settings form state
+  const [projectName, setProjectName] = useState("");
+  const [formProjectName, setFormProjectName] = useState("");
+  const [formMeasurementUnit, setFormMeasurementUnit] =
+    useState<MeasurementUnit>("feet");
+  const [hasFormChanges, setHasFormChanges] = useState(false);
+
+  // Handle form field changes
+  const handleFormChange = () => {
+    setHasFormChanges(true);
+  };
+
+  // Handle form submission
+  const handleSaveSettings = () => {
+    setProjectName(formProjectName);
+    setMeasurementUnit(formMeasurementUnit);
+    setHasFormChanges(false);
+    setSettingsOpen(false);
+  };
+
+  // Handle form cancellation
+  const handleCancelSettings = () => {
+    setFormProjectName(projectName);
+    setFormMeasurementUnit(measurementUnit);
+    setHasFormChanges(false);
+    setSettingsOpen(false);
+  };
 
   const unitLabel = measurementUnit === "feet" ? "ft" : "m";
 
@@ -885,6 +914,13 @@ export function MapShell() {
       // Add logo to first page
       await addLogoToPage();
 
+      // Add project name heading to first page if provided
+      if (projectName.trim()) {
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(16);
+        pdf.text(projectName.trim(), margin, margin);
+      }
+
       // Build tables on next pages
       const startNewPage = async () => {
         pdf.addPage("letter", "landscape");
@@ -1178,6 +1214,7 @@ export function MapShell() {
     restricted: SerializedRestricted[];
     showHeight: boolean;
     measurementUnit?: "feet" | "meters";
+    projectName?: string;
     v: 1;
   }
 
@@ -1305,6 +1342,7 @@ export function MapShell() {
       restricted,
       showHeight,
       measurementUnit,
+      projectName,
       v: 1,
     };
     const json = JSON.stringify(state);
@@ -1351,6 +1389,10 @@ export function MapShell() {
       setMeasurementUnit(state.measurementUnit);
       // defer refresh until elements exist
       setTimeout(() => refreshAllMeasurementTexts(), 0);
+    }
+    if (state.projectName) {
+      setProjectName(state.projectName);
+      setFormProjectName(state.projectName);
     }
     // Restore fireworks
     let maxFireworkNum = 0;
@@ -1949,6 +1991,15 @@ export function MapShell() {
     // These are stable across the component lifecycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMapReady]);
+
+  // Initialize form state when settings dialog opens
+  useEffect(() => {
+    if (settingsOpen) {
+      setFormProjectName(projectName);
+      setFormMeasurementUnit(measurementUnit);
+      setHasFormChanges(false);
+    }
+  }, [settingsOpen, projectName, measurementUnit]);
 
   async function openShareDialog() {
     const q = await encodeStateToHash();
@@ -3038,19 +3089,30 @@ export function MapShell() {
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Settings</DialogTitle>
-                  <DialogDescription>
-                    Configure application preferences.
-                  </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
+                  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">
+                      Project Name
+                    </label>
+                    <Input
+                      value={formProjectName}
+                      onChange={(e) => {
+                        setFormProjectName(e.target.value);
+                        handleFormChange();
+                      }}
+                      placeholder="Enter project name"
+                    />
+                  </div>
                   <div className="grid grid-cols-[160px_1fr] items-center gap-3">
                     <label className="text-sm text-muted-foreground">
                       Measurement Unit
                     </label>
                     <Select
-                      value={measurementUnit}
+                      value={formMeasurementUnit}
                       onValueChange={(v) => {
-                        setMeasurementUnit(v as MeasurementUnit);
+                        setFormMeasurementUnit(v as MeasurementUnit);
+                        handleFormChange();
                       }}
                     >
                       <SelectTrigger className="w-full">
@@ -3064,14 +3126,21 @@ export function MapShell() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <DialogClose asChild>
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
-                    >
-                      Close
-                    </button>
-                  </DialogClose>
+                  <button
+                    type="button"
+                    onClick={handleCancelSettings}
+                    className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveSettings}
+                    disabled={!hasFormChanges}
+                    className="inline-flex items-center justify-center rounded-md bg-brand text-white px-3 py-2 text-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Save Changes
+                  </button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
