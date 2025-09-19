@@ -171,6 +171,12 @@ export function MapShell() {
   const [measurementUnit, setMeasurementUnit] =
     useState<MeasurementUnit>("feet");
   const [safetyDistance, setSafetyDistance] = useState<70 | 100>(70);
+  const safetyDistanceRef = useRef<70 | 100>(70);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    safetyDistanceRef.current = safetyDistance;
+  }, [safetyDistance]);
 
   // Settings form state
   const [projectName, setProjectName] = useState("");
@@ -1934,7 +1940,12 @@ export function MapShell() {
         addExtrusionForAnnotation(annotationsRef.current[circleId]!);
       const updateCircle = () => {
         const pos = marker.getLngLat();
-        const currentRadiusMeters = feetToMeters(fw.inches * safetyDistance);
+        // Get the annotation record to access current inches value and use current safetyDistance from state
+        const annotation = annotationsRef.current[circleId];
+        if (!annotation) return;
+        const currentRadiusMeters = feetToMeters(
+          annotation.inches * safetyDistanceRef.current
+        );
         const updated = createCircleFeature(
           pos.lng,
           pos.lat,
@@ -3630,7 +3641,12 @@ export function MapShell() {
     // Keep circle in sync when marker is dragged
     const updateCircle = () => {
       const pos = marker.getLngLat();
-      const currentRadiusMeters = feetToMeters(item.inches * safetyDistance);
+      // Get the annotation record to access current inches value and use current safetyDistance from state
+      const annotation = annotationsRef.current[circleId];
+      if (!annotation) return;
+      const currentRadiusMeters = feetToMeters(
+        annotation.inches * safetyDistanceRef.current
+      );
       const updated = createCircleFeature(
         pos.lng,
         pos.lat,
