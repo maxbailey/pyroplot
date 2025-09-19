@@ -75,7 +75,12 @@ type AnnotationItem = {
   color: string;
 };
 
-type AnnotationType = "firework" | "audience" | "measurement" | "restricted";
+type AnnotationType =
+  | "firework"
+  | "audience"
+  | "measurement"
+  | "restricted"
+  | "custom";
 
 interface AnnotationRecord {
   type: AnnotationType;
@@ -89,6 +94,10 @@ interface AnnotationRecord {
   fillLayerId: string;
   lineLayerId: string;
   extrusionLayerId?: string;
+  // Custom annotation fields
+  emoji?: string;
+  description?: string;
+  textSourceId?: string;
 }
 
 interface AudienceRecord {
@@ -154,6 +163,10 @@ export function MapShell() {
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [customAnnotationOpen, setCustomAnnotationOpen] = useState(false);
+  const [editingCustomAnnotation, setEditingCustomAnnotation] = useState<
+    string | null
+  >(null);
   type MeasurementUnit = "feet" | "meters";
   const [measurementUnit, setMeasurementUnit] =
     useState<MeasurementUnit>("feet");
@@ -166,6 +179,24 @@ export function MapShell() {
     useState<MeasurementUnit>("feet");
   const [formSafetyDistance, setFormSafetyDistance] = useState<70 | 100>(70);
   const [hasFormChanges, setHasFormChanges] = useState(false);
+
+  // Custom annotation form state
+  const [customLabel, setCustomLabel] = useState("");
+  const [customColor, setCustomColor] = useState("#FF5126");
+
+  // Color presets for custom annotations
+  const colorPresets = [
+    { color: "#EF4444", name: "Red" },
+    { color: "#F97316", name: "Orange" },
+    { color: "#EAB308", name: "Yellow" },
+    { color: "#22C55E", name: "Green" },
+    { color: "#2BB6F6", name: "Blue" },
+    { color: "#6366F1", name: "Indigo" },
+    { color: "#A855F7", name: "Purple" },
+    { color: "#EC4899", name: "Pink" },
+    { color: "#1B1C20", name: "Dark Gray" },
+    { color: "#BEC2CD", name: "Light Gray" },
+  ];
 
   // Handle form field changes
   const handleFormChange = () => {
@@ -191,6 +222,178 @@ export function MapShell() {
     setFormSafetyDistance(safetyDistance);
     setHasFormChanges(false);
     setSettingsOpen(false);
+  };
+
+  // Helper function to get next available annotation number
+  const getNextAnnotationNumber = () => {
+    const allAnnotations = Object.values(annotationsRef.current);
+    const allNumbers = allAnnotations
+      .map((ann) => ann.number)
+      .sort((a, b) => a - b);
+
+    // Find the first gap in the sequence
+    for (let i = 1; i <= allNumbers.length + 1; i++) {
+      if (!allNumbers.includes(i)) {
+        return i;
+      }
+    }
+    return allNumbers.length + 1;
+  };
+
+  // Helper function to renumber all annotations after deletion
+  const renumberAnnotations = () => {
+    const allAnnotations = Object.values(annotationsRef.current).sort(
+      (a, b) => a.number - b.number
+    );
+    allAnnotations.forEach((annotation, index) => {
+      annotation.number = index + 1;
+
+      // Update visual labels for firework annotations
+      if (annotation.type === "firework") {
+        const markerEl = annotation.marker.getElement();
+        const labelEl = markerEl.querySelector("div") as HTMLDivElement;
+        if (labelEl) {
+          const firstDiv = labelEl.querySelector(
+            "div:first-child"
+          ) as HTMLDivElement;
+          if (firstDiv) {
+            firstDiv.textContent = annotation.label;
+          }
+        }
+      }
+    });
+  };
+
+  // Custom annotation handlers
+  const handleCustomAnnotationClick = (annotationId: string) => {
+    const annotation = annotationsRef.current[annotationId];
+    if (annotation && annotation.type === "custom") {
+      setCustomLabel(annotation.label);
+      setCustomColor(annotation.color);
+      setEditingCustomAnnotation(annotationId);
+      setCustomAnnotationOpen(true);
+    }
+  };
+
+  const handleSaveCustomAnnotation = () => {
+    if (editingCustomAnnotation) {
+      const annotation = annotationsRef.current[editingCustomAnnotation];
+      if (annotation) {
+        // Update existing annotation
+        annotation.label = customLabel;
+        annotation.color = customColor;
+
+        // Update marker color by recreating the marker
+        const oldMarker = annotation.marker;
+        const position = oldMarker.getLngLat();
+        const map = mapRef.current;
+
+        if (map) {
+          // Remove old marker
+          oldMarker.remove();
+
+          // Create new marker with updated color
+          const newMarker = new mapboxgl.Marker({
+            color: customColor,
+            draggable: true,
+            clickTolerance: 5,
+          })
+            .setLngLat(position)
+            .addTo(map);
+
+          // Use native Mapbox popup open as the click signal for recreated markers
+          const recreatedClickProxy = new mapboxgl.Popup({
+            closeButton: false,
+            closeOnClick: true,
+            maxWidth: "0px",
+          });
+          recreatedClickProxy.on("open", () => {
+            handleCustomAnnotationClick(annotation.id);
+            recreatedClickProxy.remove();
+          });
+          newMarker.setPopup(recreatedClickProxy);
+          newMarker.getElement().addEventListener("contextmenu", (evt) => {
+            evt.preventDefault();
+            removeCustomAnnotation(annotation.id);
+          });
+
+          // Add drag handler for text
+          const updateCustomText = () => {
+            const pos = newMarker.getLngLat();
+
+            // Update text position
+            const textSrc = map.getSource(
+              annotation.textSourceId!
+            ) as mapboxgl.GeoJSONSource;
+            if (textSrc) {
+              textSrc.setData({
+                type: "FeatureCollection",
+                features: [
+                  {
+                    type: "Feature" as const,
+                    geometry: {
+                      type: "Point" as const,
+                      coordinates: [pos.lng, pos.lat],
+                    },
+                    properties: {
+                      text: customLabel,
+                    },
+                  },
+                ],
+              } as FeatureCollection);
+            }
+          };
+          newMarker.on("drag", updateCustomText);
+          newMarker.on("dragend", updateCustomText);
+
+          // Update annotation record
+          annotation.marker = newMarker;
+
+          // Update markers array
+          const markerIndex = annotationMarkersRef.current.indexOf(oldMarker);
+          if (markerIndex !== -1) {
+            annotationMarkersRef.current[markerIndex] = newMarker;
+          }
+        }
+
+        // Update text content
+        if (map && annotation.textSourceId) {
+          // Update text
+          const textSrc = map.getSource(
+            annotation.textSourceId
+          ) as mapboxgl.GeoJSONSource;
+          if (textSrc) {
+            const pos = annotation.marker.getLngLat();
+            textSrc.setData({
+              type: "FeatureCollection",
+              features: [
+                {
+                  type: "Feature" as const,
+                  geometry: {
+                    type: "Point" as const,
+                    coordinates: [pos.lng, pos.lat],
+                  },
+                  properties: {
+                    text: customLabel,
+                  },
+                },
+              ],
+            } as FeatureCollection);
+          }
+        }
+      }
+    }
+    setCustomAnnotationOpen(false);
+    setEditingCustomAnnotation(null);
+    setCustomLabel("");
+    setCustomColor("#FF5126");
+  };
+
+  const handleCancelCustomAnnotation = () => {
+    setCustomAnnotationOpen(false);
+    setEditingCustomAnnotation(null);
+    setCustomLabel("");
+    setCustomColor("#FF5126");
   };
 
   const unitLabel = measurementUnit === "feet" ? "ft" : "m";
@@ -351,6 +554,7 @@ export function MapShell() {
       { key: "audience", label: "Audience", inches: 0, color: "#0077FF" },
       { key: "measurement", label: "Measurement", inches: 0, color: "#00AA00" },
       { key: "restricted", label: "Restricted", inches: 0, color: "#FF0000" },
+      { key: "custom", label: "Custom", inches: 0, color: "#FF5126" },
     ],
     []
   );
@@ -655,18 +859,20 @@ export function MapShell() {
       const labelSourceId = "__siteplan-labels-src";
       const labelLayerId = "__siteplan-labels-layer";
       const features: Array<Feature> = [];
-      // Firework labels from markers
+      // Firework labels from markers (exclude custom annotations)
       for (const key of Object.keys(annotationsRef.current)) {
         const rec = annotationsRef.current[key]!;
-        const pos = rec.marker.getLngLat();
-        features.push({
-          type: "Feature",
-          geometry: { type: "Point", coordinates: [pos.lng, pos.lat] },
-          properties: {
-            id: String(rec.number),
-            atype: "firework",
-          },
-        } as Feature);
+        if (rec.type !== "custom") {
+          const pos = rec.marker.getLngLat();
+          features.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [pos.lng, pos.lat] },
+            properties: {
+              id: String(rec.number),
+              atype: "firework",
+            },
+          } as Feature);
+        }
       }
       // Audience labels centered on rectangle
       for (const key of Object.keys(audienceAreasRef.current)) {
@@ -723,6 +929,24 @@ export function MapShell() {
           },
         } as Feature);
       }
+      // Custom annotation ID labels (only ID numbers, no text)
+      for (const key of Object.keys(annotationsRef.current)) {
+        const rec = annotationsRef.current[key]!;
+        if (rec.type === "custom") {
+          const pos = rec.marker.getLngLat();
+          features.push({
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: [pos.lng, pos.lat],
+            },
+            properties: {
+              id: String(rec.number),
+              atype: "custom",
+            },
+          } as Feature);
+        }
+      }
       // Restricted labels centered on rectangle
       for (const key of Object.keys(restrictedAreasRef.current)) {
         const rec = restrictedAreasRef.current[key]!;
@@ -740,6 +964,99 @@ export function MapShell() {
             atype: "restricted",
           },
         } as Feature);
+      }
+
+      // Add custom annotation circles for PDF (BEFORE labels)
+      const customCircleSourceId = "__siteplan-custom-circles-src";
+      const customCircleFeatures: Array<Feature> = [];
+      for (const key of Object.keys(annotationsRef.current)) {
+        const rec = annotationsRef.current[key]!;
+        if (rec.type === "custom") {
+          const pos = rec.marker.getLngLat();
+          // Create a small circle for the ID background
+          const radiusMeters = feetToMeters(12); // 12 feet radius
+          const circleFeature = createCircleFeature(
+            pos.lng,
+            pos.lat,
+            radiusMeters
+          );
+          customCircleFeatures.push({
+            ...circleFeature,
+            properties: {
+              color: rec.color,
+              id: rec.id,
+            },
+          } as Feature);
+          console.info(
+            `[siteplan] created custom circle for ${rec.id} at ${pos.lng}, ${pos.lat} with color ${rec.color}`
+          );
+        }
+      }
+      console.info(
+        `[siteplan] created ${customCircleFeatures.length} custom circle features`
+      );
+
+      if (customCircleFeatures.length > 0) {
+        try {
+          if (!map.getSource(customCircleSourceId)) {
+            map.addSource(customCircleSourceId, {
+              type: "geojson",
+              data: {
+                type: "FeatureCollection",
+                features: customCircleFeatures,
+              } as FeatureCollection,
+            });
+            console.info("[siteplan] added custom circle source");
+          } else {
+            (
+              map.getSource(customCircleSourceId) as mapboxgl.GeoJSONSource
+            ).setData({
+              type: "FeatureCollection",
+              features: customCircleFeatures,
+            } as FeatureCollection);
+            console.info("[siteplan] updated custom circle source data");
+          }
+          if (!map.getLayer("__siteplan-custom-circles-fill")) {
+            map.addLayer({
+              id: "__siteplan-custom-circles-fill",
+              type: "fill",
+              source: customCircleSourceId,
+              paint: {
+                "fill-color": ["get", "color"],
+                "fill-opacity": 1.0, // Fully opaque
+              },
+            });
+            map.addLayer({
+              id: "__siteplan-custom-circles-line",
+              type: "line",
+              source: customCircleSourceId,
+              paint: {
+                "line-color": ["get", "color"],
+                "line-width": 2,
+                "line-opacity": 1.0,
+              },
+            });
+            console.info(
+              "[siteplan] added custom circle layers with full opacity"
+            );
+          } else {
+            console.info("[siteplan] custom circle layers already exist");
+          }
+        } catch (error) {
+          console.warn("[siteplan] failed to add custom circles:", error);
+        }
+      }
+
+      // Temporarily adjust custom annotation text labels for PDF generation
+      for (const key of Object.keys(annotationsRef.current)) {
+        const rec = annotationsRef.current[key]!;
+        if (rec.type === "custom" && rec.textSourceId) {
+          const textLayerId = `${rec.id}-text`;
+          if (map.getLayer(textLayerId)) {
+            // Temporarily update the text-offset for PDF generation
+            map.setLayoutProperty(textLayerId, "text-offset", [0, -1.5]);
+          }
+        }
       }
 
       if (features.length > 0) {
@@ -776,6 +1093,8 @@ export function MapShell() {
                     ["concat", ["get", "id"], " ", ["get", "units"]],
                     ["==", ["get", "atype"], "restricted"],
                     ["concat", "Restricted ", ["get", "id"]],
+                    ["==", ["get", "atype"], "custom"],
+                    ["get", "id"],
                     ["get", "id"],
                   ],
                   "text-size": [
@@ -832,11 +1151,29 @@ export function MapShell() {
         imgData = canvas.toDataURL("image/png");
       }
 
-      // Clean up temp label layer/source
+      // Clean up temp layers/sources
       try {
         if (map.getLayer(labelLayerId)) map.removeLayer(labelLayerId);
         if (map.getSource(labelSourceId)) map.removeSource(labelSourceId);
-        console.info("[siteplan] cleaned up temp label layer/source");
+        if (map.getLayer("__siteplan-custom-circles-fill"))
+          map.removeLayer("__siteplan-custom-circles-fill");
+        if (map.getLayer("__siteplan-custom-circles-line"))
+          map.removeLayer("__siteplan-custom-circles-line");
+        if (map.getSource(customCircleSourceId))
+          map.removeSource(customCircleSourceId);
+
+        // Restore original text-offset for custom annotation labels
+        for (const key of Object.keys(annotationsRef.current)) {
+          const rec = annotationsRef.current[key]!;
+          if (rec.type === "custom" && rec.textSourceId) {
+            const textLayerId = `${rec.id}-text`;
+            if (map.getLayer(textLayerId)) {
+              map.setLayoutProperty(textLayerId, "text-offset", [0, -2.8]);
+            }
+          }
+        }
+
+        console.info("[siteplan] cleaned up temp layers/sources");
       } catch {}
 
       const jsPDF = await loadJsPDF();
@@ -981,9 +1318,9 @@ export function MapShell() {
 
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(10);
-      const fireworks = Object.values(annotationsRef.current).sort(
-        (a, b) => a.number - b.number
-      );
+      const fireworks = Object.values(annotationsRef.current)
+        .filter((rec) => rec.type === "firework")
+        .sort((a, b) => a.number - b.number);
       for (const rec of fireworks) {
         const pos = rec.marker.getLngLat();
         const id = String(rec.number);
@@ -1019,6 +1356,81 @@ export function MapShell() {
         pdf.text(radius, colX[2], yMid);
         pdf.text(latlng, colX[3], yMid);
         y += rowH + rowGap;
+      }
+
+      // Custom Annotations table
+      const customAnnotations = Object.values(annotationsRef.current)
+        .filter((rec) => rec.type === "custom")
+        .sort((a, b) => a.number - b.number);
+
+      if (customAnnotations.length > 0) {
+        await startNewPage();
+        drawHeader("Custom Annotations");
+        y = margin + 18;
+        const cColX = [margin, margin + 80, margin + 200, margin + 280];
+
+        // header
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        drawRowBg(margin, y, pageWidth - margin * 2, headerH);
+        const cHeaderYMid = y + headerH / 2 + 3;
+        pdf.text("ID/#", cColX[0], cHeaderYMid);
+        pdf.text("Label", cColX[1], cHeaderYMid);
+        pdf.text("Color", cColX[2], cHeaderYMid);
+        pdf.text("Position (lat, lng)", cColX[3], cHeaderYMid);
+        y += headerH + rowGap;
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(10);
+        for (const rec of customAnnotations) {
+          const pos = rec.marker.getLngLat();
+          const id = String(rec.number);
+          const label = rec.label;
+          const latlng = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
+
+          const rowH = 26;
+          if (y + rowH + margin > pageHeight) {
+            await startNewPage();
+            drawHeader("Custom Annotations (cont.)");
+            y = margin + 18;
+            drawRowBg(margin, y, pageWidth - margin * 2, headerH);
+            const hY = y + headerH / 2 + 3;
+            pdf.setFont("helvetica", "bold");
+            pdf.setFontSize(11);
+            pdf.text("ID/#", cColX[0], hY);
+            pdf.text("Label", cColX[1], hY);
+            pdf.text("Color", cColX[2], hY);
+            pdf.text("Position (lat, lng)", cColX[3], hY);
+            y += headerH + rowGap;
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(10);
+          }
+          drawRowBg(margin, y, pageWidth - margin * 2, rowH);
+          const yMid = y + rowH / 2 + 3;
+          pdf.text(id, cColX[0], yMid);
+          pdf.text(label, cColX[1], yMid);
+
+          // Draw colored circle (using rectangle as circle approximation)
+          const circleX = cColX[2] + 10;
+          const circleY = yMid - 4;
+          const circleSize = 8;
+          // Convert hex color to RGB
+          const hex = rec.color.replace("#", "");
+          const r = parseInt(hex.substr(0, 2), 16);
+          const g = parseInt(hex.substr(2, 2), 16);
+          const b = parseInt(hex.substr(4, 2), 16);
+          pdf.setFillColor(r, g, b);
+          pdf.rect(
+            circleX - circleSize / 2,
+            circleY - circleSize / 2,
+            circleSize,
+            circleSize,
+            "F"
+          );
+
+          pdf.text(latlng, cColX[3], yMid);
+          y += rowH + rowGap;
+        }
       }
 
       // Audience Annotations table
@@ -1202,6 +1614,16 @@ export function MapShell() {
     position: [number, number]; // [lng, lat]
   }
 
+  interface SerializedCustom {
+    id: string;
+    number: number;
+    label: string;
+    color: string;
+    position: [number, number]; // [lng, lat]
+    emoji?: string;
+    description?: string;
+  }
+
   interface SerializedAudience {
     id: string;
     number: number;
@@ -1228,6 +1650,7 @@ export function MapShell() {
       pitch: number;
     };
     fireworks: SerializedFirework[];
+    custom: SerializedCustom[];
     audiences: SerializedAudience[];
     measurements: SerializedMeasurement[];
     restricted: SerializedRestricted[];
@@ -1322,17 +1745,34 @@ export function MapShell() {
     };
     const fireworks: SerializedFirework[] = Object.values(
       annotationsRef.current
-    ).map((rec) => {
-      const pos = rec.marker.getLngLat();
-      return {
-        id: rec.id,
-        number: rec.number,
-        inches: rec.inches,
-        label: rec.label,
-        color: rec.color,
-        position: [pos.lng, pos.lat],
-      };
-    });
+    )
+      .filter((rec) => rec.type === "firework")
+      .map((rec) => {
+        const pos = rec.marker.getLngLat();
+        return {
+          id: rec.id,
+          number: rec.number,
+          inches: rec.inches,
+          label: rec.label,
+          color: rec.color,
+          position: [pos.lng, pos.lat],
+        };
+      });
+
+    const custom: SerializedCustom[] = Object.values(annotationsRef.current)
+      .filter((rec) => rec.type === "custom")
+      .map((rec) => {
+        const pos = rec.marker.getLngLat();
+        return {
+          id: rec.id,
+          number: rec.number,
+          label: rec.label,
+          color: rec.color,
+          position: [pos.lng, pos.lat],
+          emoji: rec.emoji,
+          description: rec.description,
+        };
+      });
     const audiences: SerializedAudience[] = Object.values(
       audienceAreasRef.current
     ).map((rec) => ({
@@ -1357,6 +1797,7 @@ export function MapShell() {
     const state: SerializedState = {
       camera,
       fireworks,
+      custom,
       audiences,
       measurements,
       restricted,
@@ -1510,6 +1951,142 @@ export function MapShell() {
       maxFireworkNum = Math.max(maxFireworkNum, fw.number || 0);
     }
     fireworkCounterRef.current = maxFireworkNum;
+
+    // Restore custom annotations
+    let maxCustomNum = 0;
+    for (const custom of state.custom || []) {
+      const id =
+        custom.id ||
+        `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const number = custom.number;
+
+      // Create default Mapbox marker with custom color
+      const marker = new mapboxgl.Marker({
+        color: custom.color,
+        draggable: true,
+      })
+        .setLngLat(custom.position)
+        .addTo(map);
+
+      annotationMarkersRef.current.push(marker);
+
+      // Use native Mapbox popup open as the click signal (Mapbox suppresses clicks after drag)
+      const clickProxyPopup = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: true,
+        maxWidth: "0px",
+      });
+      clickProxyPopup.on("open", () => {
+        handleCustomAnnotationClick(id);
+        clickProxyPopup.remove();
+      });
+      marker.setPopup(clickProxyPopup);
+
+      // Add right-click handler to remove
+      marker.getElement().addEventListener("contextmenu", (evt) => {
+        evt.preventDefault();
+        removeCustomAnnotation(id);
+      });
+
+      // Create text element for emoji and label combined
+      const textSourceId = `${id}-text-src`;
+
+      // Combined emoji and label text
+      const textFeature = {
+        type: "Feature" as const,
+        geometry: {
+          type: "Point" as const,
+          coordinates: custom.position,
+        },
+        properties: {
+          text: custom.label,
+        },
+      };
+
+      // Add text source and layer
+      map.addSource(textSourceId, {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [textFeature],
+        } as FeatureCollection,
+      });
+
+      map.addLayer({
+        id: `${id}-text`,
+        type: "symbol",
+        source: textSourceId,
+        layout: {
+          "text-field": ["get", "text"],
+          "text-font": [
+            "Noto Color Emoji",
+            "Apple Color Emoji",
+            "Segoe UI Emoji",
+            "Open Sans Bold",
+            "Arial Unicode MS Bold",
+          ],
+          "text-size": 14,
+          "text-anchor": "bottom",
+          "text-offset": [0, -2.8],
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "#000000",
+          "text-halo-width": 2,
+        },
+      });
+
+      // Store annotation
+      annotationsRef.current[id] = {
+        type: "custom",
+        number,
+        id,
+        inches: 0, // Not applicable for custom
+        label: custom.label,
+        color: custom.color,
+        marker,
+        sourceId: textSourceId, // Store text source ID
+        fillLayerId: `${id}-text`, // Store text layer ID
+        lineLayerId: `${id}-text`, // Store text layer ID (same as fillLayerId)
+        emoji: custom.emoji,
+        description: custom.description,
+        textSourceId, // Store text source ID
+      };
+
+      // Add drag handler to update text position
+      const updateCustomText = () => {
+        const pos = marker.getLngLat();
+
+        // Update text position
+        const textSrc = map.getSource(textSourceId) as mapboxgl.GeoJSONSource;
+        if (textSrc) {
+          textSrc.setData({
+            type: "FeatureCollection",
+            features: [
+              {
+                type: "Feature" as const,
+                geometry: {
+                  type: "Point" as const,
+                  coordinates: [pos.lng, pos.lat],
+                },
+                properties: {
+                  text: custom.label,
+                },
+              },
+            ],
+          } as FeatureCollection);
+        }
+      };
+      marker.on("drag", updateCustomText);
+      marker.on("dragend", updateCustomText);
+
+      maxCustomNum = Math.max(maxCustomNum, custom.number || 0);
+    }
+    fireworkCounterRef.current = Math.max(
+      fireworkCounterRef.current,
+      maxCustomNum
+    );
+
     // Restore audiences
     let maxAudienceNum = 0;
     for (const aud of state.audiences) {
@@ -2123,6 +2700,31 @@ export function MapShell() {
       (m) => m !== rec.marker
     );
     delete annotationsRef.current[id];
+
+    // Renumber remaining annotations
+    renumberAnnotations();
+  }
+
+  function removeCustomAnnotation(id: string) {
+    const map = mapRef.current;
+    if (!map) return;
+    const rec = annotationsRef.current[id];
+    if (!rec) return;
+    try {
+      rec.marker.remove();
+    } catch {}
+    try {
+      // Remove text layer
+      if (map.getLayer(rec.fillLayerId)) map.removeLayer(rec.fillLayerId); // text layer
+      if (map.getSource(rec.sourceId)) map.removeSource(rec.sourceId); // text source
+    } catch {}
+    annotationMarkersRef.current = annotationMarkersRef.current.filter(
+      (m) => m !== rec.marker
+    );
+    delete annotationsRef.current[id];
+
+    // Renumber remaining annotations
+    renumberAnnotations();
   }
 
   function removeAudienceArea(id: string) {
@@ -2815,6 +3417,140 @@ export function MapShell() {
       return;
     }
 
+    // Handle custom annotation
+    if (item.key === "custom") {
+      // Create custom annotation with default values
+      const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const number = getNextAnnotationNumber();
+
+      // Create default Mapbox marker with custom color
+      const marker = new mapboxgl.Marker({
+        color: customColor,
+        draggable: true,
+        clickTolerance: 5, // Allow 5px movement before considering it a drag
+      })
+        .setLngLat([lngLat.lng, lngLat.lat])
+        .addTo(mapRef.current!);
+
+      annotationMarkersRef.current.push(marker);
+
+      // Use native Mapbox popup open as the click signal (Mapbox suppresses clicks after drag)
+      const clickProxyPopup2 = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: true,
+        maxWidth: "0px",
+      });
+      clickProxyPopup2.on("open", () => {
+        handleCustomAnnotationClick(id);
+        clickProxyPopup2.remove();
+      });
+      marker.setPopup(clickProxyPopup2);
+
+      // Add right-click handler to remove
+      marker.getElement().addEventListener("contextmenu", (evt) => {
+        evt.preventDefault();
+        removeCustomAnnotation(id);
+      });
+
+      // Create text element for emoji and label combined
+      const textSourceId = `${id}-text-src`;
+
+      // Combined emoji and label text
+      const textFeature = {
+        type: "Feature" as const,
+        geometry: {
+          type: "Point" as const,
+          coordinates: [lngLat.lng, lngLat.lat],
+        },
+        properties: {
+          text: customLabel || "Custom",
+        },
+      };
+
+      // Add text source and layer
+      mapRef.current!.addSource(textSourceId, {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [textFeature],
+        } as FeatureCollection,
+      });
+
+      mapRef.current!.addLayer({
+        id: `${id}-text`,
+        type: "symbol",
+        source: textSourceId,
+        layout: {
+          "text-field": ["get", "text"],
+          "text-font": [
+            "Noto Color Emoji",
+            "Apple Color Emoji",
+            "Segoe UI Emoji",
+            "Open Sans Bold",
+            "Arial Unicode MS Bold",
+          ],
+          "text-size": 14,
+          "text-anchor": "bottom",
+          "text-offset": [0, -2.8],
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "#000000",
+          "text-halo-width": 2,
+        },
+      });
+
+      // Store annotation
+      annotationsRef.current[id] = {
+        type: "custom",
+        number,
+        id,
+        inches: 0, // Not applicable for custom
+        label: customLabel || "Custom",
+        color: customColor,
+        marker,
+        sourceId: textSourceId, // Store text source ID
+        fillLayerId: `${id}-text`, // Store text layer ID
+        lineLayerId: `${id}-text`, // Store text layer ID (same as fillLayerId)
+        textSourceId, // Store text source ID
+      };
+
+      // Add drag handler to update text position
+      const updateCustomText = () => {
+        const pos = marker.getLngLat();
+
+        // Update text position
+        const textSrc = mapRef.current!.getSource(
+          textSourceId
+        ) as mapboxgl.GeoJSONSource;
+        if (textSrc) {
+          textSrc.setData({
+            type: "FeatureCollection",
+            features: [
+              {
+                type: "Feature" as const,
+                geometry: {
+                  type: "Point" as const,
+                  coordinates: [pos.lng, pos.lat],
+                },
+                properties: {
+                  text: customLabel || "Custom",
+                },
+              },
+            ],
+          } as FeatureCollection);
+        }
+      };
+      marker.on("drag", updateCustomText);
+      marker.on("dragend", updateCustomText);
+
+      // Open dialog immediately for configuration
+      setEditingCustomAnnotation(id);
+      setCustomAnnotationOpen(true);
+
+      return;
+    }
+
     // Firework-type marker and label
     const labelEl = document.createElement("div");
     labelEl.className =
@@ -2840,7 +3576,7 @@ export function MapShell() {
     const circleId = `circle-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2)}`;
-    const number = ++fireworkCounterRef.current;
+    const number = getNextAnnotationNumber();
     // right-click on label removes the entire annotation
     labelEl.addEventListener("contextmenu", (evt) => {
       evt.preventDefault();
@@ -3076,12 +3812,14 @@ export function MapShell() {
                       key: a.key,
                       glyph:
                         a.key === "audience"
-                          ? "😊"
+                          ? "🤩"
                           : a.key === "measurement"
                           ? "📐"
                           : a.key === "restricted"
                           ? "🚫"
-                          : "🧨",
+                          : a.key === "custom"
+                          ? "✨"
+                          : "💥",
                     })
                   );
                 }}
@@ -3090,12 +3828,14 @@ export function MapShell() {
               >
                 <span>
                   {a.key === "audience"
-                    ? "😊"
+                    ? "🤩"
                     : a.key === "measurement"
                     ? "📐"
                     : a.key === "restricted"
                     ? "🚫"
-                    : "🧨"}
+                    : a.key === "custom"
+                    ? "✨"
+                    : "💥"}
                 </span>
                 <span className="truncate">{a.label}</span>
               </button>
@@ -3200,6 +3940,85 @@ export function MapShell() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+
+            {/* Custom Annotation Dialog */}
+            <Dialog
+              open={customAnnotationOpen}
+              onOpenChange={setCustomAnnotationOpen}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Custom Annotation</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">
+                      Label
+                    </label>
+                    <Input
+                      value={customLabel}
+                      onChange={(e) => setCustomLabel(e.target.value)}
+                      placeholder="Enter label"
+                    />
+                  </div>
+                  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">
+                      Color
+                    </label>
+                    <div className="grid grid-cols-5 gap-3 w-full max-w-xs">
+                      {colorPresets.map((preset) => (
+                        <button
+                          key={preset.color}
+                          type="button"
+                          onClick={() => {
+                            setCustomColor(preset.color);
+                            handleFormChange();
+                          }}
+                          className={`w-10 h-10 rounded-lg relative flex items-center justify-center ${
+                            customColor === preset.color
+                              ? "ring-2 ring-gray-900"
+                              : "hover:ring-1 hover:ring-gray-400"
+                          }`}
+                          style={{ backgroundColor: preset.color }}
+                          title={preset.name}
+                        >
+                          {customColor === preset.color && (
+                            <svg
+                              className="w-5 h-5 text-white drop-shadow-sm"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <button
+                    type="button"
+                    onClick={handleCancelCustomAnnotation}
+                    className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveCustomAnnotation}
+                    className="inline-flex items-center justify-center rounded-md bg-brand text-white px-3 py-2 text-sm hover:opacity-90"
+                  >
+                    Save
+                  </button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
             <button
               type="button"
               onClick={() => {
