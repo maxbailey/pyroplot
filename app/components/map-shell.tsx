@@ -157,12 +157,14 @@ export function MapShell() {
   type MeasurementUnit = "feet" | "meters";
   const [measurementUnit, setMeasurementUnit] =
     useState<MeasurementUnit>("feet");
+  const [safetyDistance, setSafetyDistance] = useState<70 | 100>(70);
 
   // Settings form state
   const [projectName, setProjectName] = useState("");
   const [formProjectName, setFormProjectName] = useState("");
   const [formMeasurementUnit, setFormMeasurementUnit] =
     useState<MeasurementUnit>("feet");
+  const [formSafetyDistance, setFormSafetyDistance] = useState<70 | 100>(70);
   const [hasFormChanges, setHasFormChanges] = useState(false);
 
   // Handle form field changes
@@ -174,14 +176,19 @@ export function MapShell() {
   const handleSaveSettings = () => {
     setProjectName(formProjectName);
     setMeasurementUnit(formMeasurementUnit);
+    setSafetyDistance(formSafetyDistance);
     setHasFormChanges(false);
     setSettingsOpen(false);
+
+    // Update existing annotations with new safety distance
+    refreshAllMeasurementTexts();
   };
 
   // Handle form cancellation
   const handleCancelSettings = () => {
     setFormProjectName(projectName);
     setFormMeasurementUnit(measurementUnit);
+    setFormSafetyDistance(safetyDistance);
     setHasFormChanges(false);
     setSettingsOpen(false);
   };
@@ -280,7 +287,7 @@ export function MapShell() {
           metersW
         )} × ${formatLengthNoSpace(metersH)}`;
     }
-    // Firework radius labels
+    // Firework radius labels and circles
     for (const key of Object.keys(annotationsRef.current)) {
       const rec = annotationsRef.current[key]!;
       if (rec.type !== "firework") continue;
@@ -289,23 +296,35 @@ export function MapShell() {
         "div:nth-child(2)"
       ) as HTMLDivElement | null;
       if (!second) continue;
-      const radiusFeet = Math.round(rec.inches * 70);
+      const radiusFeet = Math.round(rec.inches * safetyDistance);
       const text =
         measurementUnit === "feet"
           ? `${radiusFeet} ft radius`
           : `${Math.round(feetToMeters(radiusFeet))} m radius`;
       second.textContent = text;
+
+      // Update circle geometry with new safety distance
+      const pos = rec.marker.getLngLat();
+      const radiusMeters = feetToMeters(rec.inches * safetyDistance);
+      const updatedCircle = createCircleFeature(pos.lng, pos.lat, radiusMeters);
+      const source = map.getSource(rec.sourceId) as mapboxgl.GeoJSONSource;
+      if (source) {
+        source.setData({
+          type: "FeatureCollection",
+          features: [updatedCircle],
+        } as FeatureCollection);
+      }
     }
   }
 
   useEffect(() => {
-    // Recompute and rewrite all visible annotation label texts when unit changes
+    // Recompute and rewrite all visible annotation label texts when unit or safety distance changes
     if (!isMapReady) return;
     try {
       refreshAllMeasurementTexts();
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measurementUnit, isMapReady]);
+  }, [measurementUnit, safetyDistance, isMapReady]);
 
   const annotationPalette = useMemo<AnnotationItem[]>(
     () => [
@@ -971,8 +990,8 @@ export function MapShell() {
         const label = rec.label;
         const radius = (
           measurementUnit === "feet"
-            ? Math.round(rec.inches * 70)
-            : Math.round(feetToMeters(rec.inches * 70))
+            ? Math.round(rec.inches * safetyDistance)
+            : Math.round(feetToMeters(rec.inches * safetyDistance))
         ).toString();
         const latlng = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
 
@@ -1215,6 +1234,7 @@ export function MapShell() {
     showHeight: boolean;
     measurementUnit?: "feet" | "meters";
     projectName?: string;
+    safetyDistance?: 70 | 100;
     v: 1;
   }
 
@@ -1343,6 +1363,7 @@ export function MapShell() {
       showHeight,
       measurementUnit,
       projectName,
+      safetyDistance,
       v: 1,
     };
     const json = JSON.stringify(state);
@@ -1394,6 +1415,10 @@ export function MapShell() {
       setProjectName(state.projectName);
       setFormProjectName(state.projectName);
     }
+    if (state.safetyDistance === 70 || state.safetyDistance === 100) {
+      setSafetyDistance(state.safetyDistance);
+      setFormSafetyDistance(state.safetyDistance);
+    }
     // Restore fireworks
     let maxFireworkNum = 0;
     for (const fw of state.fireworks) {
@@ -1405,7 +1430,7 @@ export function MapShell() {
       const labelEl = document.createElement("div");
       labelEl.className =
         "rounded-md bg-background/95 text-foreground shadow-lg border border-border px-2 py-1 text-xs";
-      const radiusFeet = Math.round(fw.inches * 70);
+      const radiusFeet = Math.round(fw.inches * safetyDistance);
       const radiusText =
         measurementUnit === "feet"
           ? `${radiusFeet} ft radius`
@@ -1419,7 +1444,7 @@ export function MapShell() {
         .setLngLat(fw.position)
         .addTo(map);
       annotationMarkersRef.current.push(marker);
-      const radiusMeters = feetToMeters(fw.inches * 70);
+      const radiusMeters = feetToMeters(fw.inches * safetyDistance);
       const circleId =
         fw.id || `circle-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       labelEl.addEventListener("contextmenu", (evt) => {
@@ -1468,7 +1493,12 @@ export function MapShell() {
         addExtrusionForAnnotation(annotationsRef.current[circleId]!);
       const updateCircle = () => {
         const pos = marker.getLngLat();
-        const updated = createCircleFeature(pos.lng, pos.lat, radiusMeters);
+        const currentRadiusMeters = feetToMeters(fw.inches * safetyDistance);
+        const updated = createCircleFeature(
+          pos.lng,
+          pos.lat,
+          currentRadiusMeters
+        );
         const src = map.getSource(sourceId) as mapboxgl.GeoJSONSource;
         src.setData({
           type: "FeatureCollection",
@@ -1997,9 +2027,10 @@ export function MapShell() {
     if (settingsOpen) {
       setFormProjectName(projectName);
       setFormMeasurementUnit(measurementUnit);
+      setFormSafetyDistance(safetyDistance);
       setHasFormChanges(false);
     }
-  }, [settingsOpen, projectName, measurementUnit]);
+  }, [settingsOpen, projectName, measurementUnit, safetyDistance]);
 
   async function openShareDialog() {
     const q = await encodeStateToHash();
@@ -2788,7 +2819,7 @@ export function MapShell() {
     const labelEl = document.createElement("div");
     labelEl.className =
       "rounded-md px-2 py-1 text-xs shadow bg-background/50 backdrop-blur-sm border border-border text-center";
-    const fwRadiusFeet = Math.round(item.inches * 70);
+    const fwRadiusFeet = Math.round(item.inches * safetyDistance);
     const fwRadiusText =
       measurementUnit === "feet"
         ? `${fwRadiusFeet} ft radius`
@@ -2804,7 +2835,7 @@ export function MapShell() {
     annotationMarkersRef.current.push(marker);
 
     // Add fallout radius circle as a GeoJSON layer
-    const radiusFeet = item.inches * 70;
+    const radiusFeet = item.inches * safetyDistance;
     const radiusMeters = feetToMeters(radiusFeet);
     const circleId = `circle-${Date.now()}-${Math.random()
       .toString(36)
@@ -2863,7 +2894,12 @@ export function MapShell() {
     // Keep circle in sync when marker is dragged
     const updateCircle = () => {
       const pos = marker.getLngLat();
-      const updated = createCircleFeature(pos.lng, pos.lat, radiusMeters);
+      const currentRadiusMeters = feetToMeters(item.inches * safetyDistance);
+      const updated = createCircleFeature(
+        pos.lng,
+        pos.lat,
+        currentRadiusMeters
+      );
       const src = mapRef.current!.getSource(sourceId) as mapboxgl.GeoJSONSource;
       src.setData({
         type: "FeatureCollection",
@@ -3124,6 +3160,26 @@ export function MapShell() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">
+                      Safety Distance
+                    </label>
+                    <Select
+                      value={formSafetyDistance.toString()}
+                      onValueChange={(v) => {
+                        setFormSafetyDistance(Number(v) as 70 | 100);
+                        handleFormChange();
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select safety distance" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="70">70ft per inch</SelectItem>
+                        <SelectItem value="100">100ft per inch</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <DialogFooter>
                   <button
@@ -3324,12 +3380,12 @@ export function MapShell() {
             <p>
               All calculations and visualizations generated by Pyro Plot are
               based on generally accepted guidelines (including NFPA 1123
-              recommendations of 70 ft per inch of shell diameter) and other
-              commonly referenced standards. However, fireworks regulations vary
-              by state, county, city, and site conditions. You must always
-              confirm requirements with, and obtain approval from, your local
-              Authority Having Jurisdiction (AHJ) before conducting any
-              fireworks display. Local laws, site-specific geography, and
+              recommendations of {safetyDistance} ft per inch of shell diameter)
+              and other commonly referenced standards. However, fireworks
+              regulations vary by state, county, city, and site conditions. You
+              must always confirm requirements with, and obtain approval from,
+              your local Authority Having Jurisdiction (AHJ) before conducting
+              any fireworks display. Local laws, site-specific geography, and
               weather conditions may override or alter these guidelines.
             </p>
             <p>
