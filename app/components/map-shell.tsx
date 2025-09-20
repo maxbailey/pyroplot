@@ -28,6 +28,11 @@ import {
   GEO_CONSTANTS,
   AUDIENCE_DIMENSIONS,
   MAP_INTERACTION,
+  DEFAULT_FIREWORK_COLOR,
+  DEFAULT_CUSTOM_COLOR,
+  DEFAULT_AUDIENCE_COLOR,
+  DEFAULT_MEASUREMENT_COLOR,
+  DEFAULT_RESTRICTED_COLOR,
 } from "@/lib/constants";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
@@ -51,9 +56,7 @@ export function MapShell() {
   const audienceCounterRef = useRef<number>(0);
   const measurementCounterRef = useRef<number>(0);
   const restrictedCounterRef = useRef<number>(0);
-  // Reset dialog is controlled by Radix internally via Dialog primitives
   const [showHeight, setShowHeight] = useState(false);
-  // PDF generation is now handled by the usePdfGenerator hook
   const [shareOpen, setShareOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
@@ -84,7 +87,7 @@ export function MapShell() {
 
   // Custom annotation form state
   const [customLabel, setCustomLabel] = useState("");
-  const [customColor, setCustomColor] = useState("#FF5126");
+  const [customColor, setCustomColor] = useState(DEFAULT_CUSTOM_COLOR);
 
   // PDF Generator hook
   const { isGenerating, generateSitePlanPdf } = usePdfGenerator({
@@ -286,14 +289,14 @@ export function MapShell() {
     setCustomAnnotationOpen(false);
     setEditingCustomAnnotation(null);
     setCustomLabel("");
-    setCustomColor("#FF5126");
+    setCustomColor(DEFAULT_CUSTOM_COLOR);
   };
 
   const handleCancelCustomAnnotation = () => {
     setCustomAnnotationOpen(false);
     setEditingCustomAnnotation(null);
     setCustomLabel("");
-    setCustomColor("#FF5126");
+    setCustomColor(DEFAULT_CUSTOM_COLOR);
   };
 
   function formatDistanceWithSpace(meters: number): string {
@@ -855,7 +858,7 @@ export function MapShell() {
       const item: AnnotationItem | undefined = ANNOTATION_PALETTE.find(
         (i) => i.inches === fw.inches && i.key !== "audience"
       );
-      const color = fw.color || item?.color || "#FF5126";
+      const color = fw.color || item?.color || DEFAULT_FIREWORK_COLOR;
       const labelText = fw.label || item?.label || `${fw.inches}\"`;
       const labelEl = document.createElement("div");
       labelEl.className =
@@ -1101,13 +1104,17 @@ export function MapShell() {
         id: `${id}-fill`,
         type: "fill",
         source: sourceId,
-        paint: { "fill-color": "#0077FF", "fill-opacity": 0.2 },
+        paint: { "fill-color": DEFAULT_AUDIENCE_COLOR, "fill-opacity": 0.2 },
       });
       map.addLayer({
         id: `${id}-line`,
         type: "line",
         source: sourceId,
-        paint: { "line-color": "#0077FF", "line-opacity": 1, "line-width": 2 },
+        paint: {
+          "line-color": DEFAULT_AUDIENCE_COLOR,
+          "line-opacity": 1,
+          "line-width": 2,
+        },
       });
       const label = document.createElement("div");
       label.className =
@@ -1128,7 +1135,9 @@ export function MapShell() {
         Math.abs(corners[1][0] - corners[0][0]) *
         GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
         Math.cos((centerLat * Math.PI) / 180);
-      const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
+      const metersH =
+        Math.abs(corners[3][1] - corners[0][1]) *
+        GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
       dims.textContent = `${formatLengthNoSpace(
         metersW
       )} × ${formatLengthNoSpace(metersH)}`;
@@ -1166,7 +1175,9 @@ export function MapShell() {
           Math.abs(moved[1][0] - moved[0][0]) *
           GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
           Math.cos((centerLatNow * Math.PI) / 180);
-        const metersHNow = Math.abs(moved[3][1] - moved[0][1]) * 110540;
+        const metersHNow =
+          Math.abs(moved[3][1] - moved[0][1]) *
+          GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         dims.textContent = `${formatLengthNoSpace(
           metersWNow
         )} × ${formatLengthNoSpace(metersHNow)}`;
@@ -1216,7 +1227,9 @@ export function MapShell() {
             Math.abs(corners[1][0] - corners[0][0]) *
             GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
             Math.cos((newCenterLat * Math.PI) / 180);
-          const metersH2 = Math.abs(corners[3][1] - corners[0][1]) * 110540;
+          const metersH2 =
+            Math.abs(corners[3][1] - corners[0][1]) *
+            GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           dims.textContent = `${formatLengthNoSpace(
             metersW2
           )} × ${formatLengthNoSpace(metersH2)}`;
@@ -1272,7 +1285,7 @@ export function MapShell() {
         type: "line",
         source: sourceId,
         paint: {
-          "line-color": "#00AA00",
+          "line-color": DEFAULT_MEASUREMENT_COLOR,
           "line-opacity": 1,
           "line-width": 3,
         },
@@ -1329,7 +1342,7 @@ export function MapShell() {
         const pointEl = document.createElement("div");
         pointEl.className =
           "w-3 h-3 rounded-full border-2 border-white shadow-lg";
-        pointEl.style.backgroundColor = "#00AA00";
+        pointEl.style.backgroundColor = DEFAULT_MEASUREMENT_COLOR;
         pointEl.style.cursor = "move";
 
         const marker = new mapboxgl.Marker({
@@ -1429,13 +1442,17 @@ export function MapShell() {
         id: `${id}-fill`,
         type: "fill",
         source: sourceId,
-        paint: { "fill-color": "#FF0000", "fill-opacity": 0.2 },
+        paint: { "fill-color": DEFAULT_RESTRICTED_COLOR, "fill-opacity": 0.2 },
       });
       map.addLayer({
         id: `${id}-line`,
         type: "line",
         source: sourceId,
-        paint: { "line-color": "#FF0000", "line-opacity": 1, "line-width": 2 },
+        paint: {
+          "line-color": DEFAULT_RESTRICTED_COLOR,
+          "line-opacity": 1,
+          "line-width": 2,
+        },
       });
       const label = document.createElement("div");
       label.className =
@@ -1456,7 +1473,9 @@ export function MapShell() {
         Math.abs(corners[1][0] - corners[0][0]) *
         GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
         Math.cos((centerLat * Math.PI) / 180);
-      const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
+      const metersH =
+        Math.abs(corners[3][1] - corners[0][1]) *
+        GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
       dims.textContent = `${formatLengthNoSpace(
         metersW
       )} × ${formatLengthNoSpace(metersH)}`;
@@ -1494,7 +1513,9 @@ export function MapShell() {
           Math.abs(moved[1][0] - moved[0][0]) *
           GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
           Math.cos((centerLatNow * Math.PI) / 180);
-        const metersHNow = Math.abs(moved[3][1] - moved[0][1]) * 110540;
+        const metersHNow =
+          Math.abs(moved[3][1] - moved[0][1]) *
+          GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         dims.textContent = `${formatLengthNoSpace(
           metersWNow
         )} × ${formatLengthNoSpace(metersHNow)}`;
@@ -1544,7 +1565,9 @@ export function MapShell() {
             Math.abs(corners[1][0] - corners[0][0]) *
             GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
             Math.cos((newCenterLat * Math.PI) / 180);
-          const metersH2 = Math.abs(corners[3][1] - corners[0][1]) * 110540;
+          const metersH2 =
+            Math.abs(corners[3][1] - corners[0][1]) *
+            GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           dims.textContent = `${formatLengthNoSpace(
             metersW2
           )} × ${formatLengthNoSpace(metersH2)}`;
@@ -1937,7 +1960,8 @@ export function MapShell() {
           GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
           Math.cos((centerLatNow * Math.PI) / 180);
         const metersHNow =
-          Math.abs(movedCorners[3][1] - movedCorners[0][1]) * 110540;
+          Math.abs(movedCorners[3][1] - movedCorners[0][1]) *
+          GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         dims.textContent = `${formatLengthNoSpace(
           metersWNow
         )} × ${formatLengthNoSpace(metersHNow)}`;
@@ -2000,7 +2024,9 @@ export function MapShell() {
             Math.abs(corners[1][0] - corners[0][0]) *
             GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
             Math.cos((newTopMiddleLat * Math.PI) / 180);
-          const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
+          const metersH =
+            Math.abs(corners[3][1] - corners[0][1]) *
+            GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           dims.textContent = `${formatLengthNoSpace(
             metersW
           )} × ${formatLengthNoSpace(metersH)}`;
@@ -2341,7 +2367,8 @@ export function MapShell() {
           GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
           Math.cos((centerLatNow * Math.PI) / 180);
         const metersHNow =
-          Math.abs(movedCorners[3][1] - movedCorners[0][1]) * 110540;
+          Math.abs(movedCorners[3][1] - movedCorners[0][1]) *
+          GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         dims.textContent = `${formatLengthNoSpace(
           metersWNow
         )} × ${formatLengthNoSpace(metersHNow)}`;
@@ -2404,7 +2431,9 @@ export function MapShell() {
             Math.abs(corners[1][0] - corners[0][0]) *
             GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
             Math.cos((newTopMiddleLat * Math.PI) / 180);
-          const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
+          const metersH =
+            Math.abs(corners[3][1] - corners[0][1]) *
+            GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           dims.textContent = `${formatLengthNoSpace(
             metersW
           )} × ${formatLengthNoSpace(metersH)}`;

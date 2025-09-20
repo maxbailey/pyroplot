@@ -34,36 +34,6 @@ export interface JsPdfConstructor {
   }): JsPdfInstance;
 }
 
-export interface AudienceRecord {
-  type: string;
-  number: number;
-  id: string;
-  sourceId: string;
-  fillLayerId: string;
-  corners: number[][];
-  cornerMarkers: mapboxgl.Marker[];
-}
-
-export interface MeasurementRecord {
-  type: string;
-  number: number;
-  id: string;
-  sourceId: string;
-  lineLayerId: string;
-  points: number[][];
-  pointMarkers: mapboxgl.Marker[];
-}
-
-export interface RestrictedRecord {
-  type: string;
-  number: number;
-  id: string;
-  sourceId: string;
-  fillLayerId: string;
-  corners: number[][];
-  cornerMarkers: mapboxgl.Marker[];
-}
-
 declare global {
   interface Window {
     jspdf?: { jsPDF: JsPdfConstructor };

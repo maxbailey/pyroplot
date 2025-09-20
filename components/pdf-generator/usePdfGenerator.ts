@@ -6,12 +6,15 @@ import {
   metersToFeet,
   createCircleFeature,
 } from "./utils";
-import type { AnnotationRecord } from "../../app/components/map-shell";
 import type {
+  AnnotationRecord,
   AudienceRecord,
   MeasurementRecord,
   RestrictedRecord,
-} from "./types";
+  MeasurementUnit,
+  SafetyDistance,
+} from "@/lib/types";
+import { GEO_CONSTANTS, AUDIENCE_DIMENSIONS } from "@/lib/constants";
 
 interface UsePdfGeneratorProps {
   mapRef: React.RefObject<mapboxgl.Map | null>;
@@ -20,8 +23,8 @@ interface UsePdfGeneratorProps {
   measurementsRef: React.MutableRefObject<Record<string, MeasurementRecord>>;
   restrictedAreasRef: React.MutableRefObject<Record<string, RestrictedRecord>>;
   projectName: string;
-  measurementUnit: "feet" | "meters";
-  safetyDistance: 70 | 100;
+  measurementUnit: MeasurementUnit;
+  safetyDistance: SafetyDistance;
 }
 
 export const usePdfGenerator = ({
@@ -74,7 +77,9 @@ export const usePdfGenerator = ({
         const centerLng = (c[0][0] + c[2][0]) / 2;
         const topLat = c[3][1]; // Use top edge (NW corner latitude)
         // Position label at top edge with small offset down
-        const offsetLat = feetToMeters(20) / 110540; // 20 feet down from top
+        const offsetLat =
+          feetToMeters(AUDIENCE_DIMENSIONS.LABEL_OFFSET_FT) /
+          GEO_CONSTANTS.METERS_PER_DEGREE_LAT; // 20 feet down from top
         const labelLat = topLat - offsetLat;
         features.push({
           type: "Feature",
@@ -106,7 +111,7 @@ export const usePdfGenerator = ({
             Math.sin(deltaLng / 2) *
             Math.sin(deltaLng / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const distanceMeters = 6371000 * c; // Earth radius in meters
+        const distanceMeters = GEO_CONSTANTS.EARTH_RADIUS * c; // Earth radius in meters
         const unitSuffix = measurementUnit === "feet" ? "ft" : "m";
         const distanceVal =
           measurementUnit === "feet"
@@ -150,7 +155,9 @@ export const usePdfGenerator = ({
         const centerLng = (c[0][0] + c[2][0]) / 2;
         const topLat = c[3][1]; // Use top edge (NW corner latitude)
         // Position label at top edge with small offset down
-        const offsetLat = feetToMeters(20) / 110540; // 20 feet down from top
+        const offsetLat =
+          feetToMeters(AUDIENCE_DIMENSIONS.LABEL_OFFSET_FT) /
+          GEO_CONSTANTS.METERS_PER_DEGREE_LAT; // 20 feet down from top
         const labelLat = topLat - offsetLat;
         features.push({
           type: "Feature",
@@ -659,9 +666,10 @@ export const usePdfGenerator = ({
         const centerLat = (c[0][1] + c[2][1]) / 2;
         const metersW =
           Math.abs(c[1][0] - c[0][0]) *
-          111320 *
+          GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
           Math.cos((centerLat * Math.PI) / 180);
-        const metersH = Math.abs(c[3][1] - c[0][1]) * 110540;
+        const metersH =
+          Math.abs(c[3][1] - c[0][1]) * GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         const widthVal =
           measurementUnit === "feet"
             ? Math.round(metersToFeet(metersW))
@@ -739,9 +747,10 @@ export const usePdfGenerator = ({
         const centerLat = (c[0][1] + c[2][1]) / 2;
         const metersW =
           Math.abs(c[1][0] - c[0][0]) *
-          111320 *
+          GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
           Math.cos((centerLat * Math.PI) / 180);
-        const metersH = Math.abs(c[3][1] - c[0][1]) * 110540;
+        const metersH =
+          Math.abs(c[3][1] - c[0][1]) * GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         const widthValR =
           measurementUnit === "feet"
             ? Math.round(metersToFeet(metersW))

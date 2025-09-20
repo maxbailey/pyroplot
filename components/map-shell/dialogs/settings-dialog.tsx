@@ -16,8 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-
-type MeasurementUnit = "feet" | "meters";
+import type { MeasurementUnit, SafetyDistance } from "@/lib/types";
 
 interface SettingsDialogProps {
   settingsOpen: boolean;
@@ -26,8 +25,8 @@ interface SettingsDialogProps {
   setFormProjectName: (name: string) => void;
   formMeasurementUnit: MeasurementUnit;
   setFormMeasurementUnit: (unit: MeasurementUnit) => void;
-  formSafetyDistance: 70 | 100;
-  setFormSafetyDistance: (distance: 70 | 100) => void;
+  formSafetyDistance: SafetyDistance;
+  setFormSafetyDistance: (distance: SafetyDistance) => void;
   hasFormChanges: boolean;
   handleFormChange: () => void;
   handleSaveSettings: () => void;
@@ -105,7 +104,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
             <Select
               value={formSafetyDistance.toString()}
               onValueChange={(v) => {
-                setFormSafetyDistance(Number(v) as 70 | 100);
+                setFormSafetyDistance(Number(v) as SafetyDistance);
                 handleFormChange();
               }}
             >

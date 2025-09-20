@@ -1,7 +1,11 @@
 "use client";
 
 import Image from "next/image";
-import type { AnnotationRecord, MeasurementUnit } from "@/lib/types";
+import type {
+  AnnotationRecord,
+  MeasurementUnit,
+  SafetyDistance,
+} from "@/lib/types";
 import { ANNOTATION_PALETTE } from "@/lib/constants";
 import { ShareDialog } from "./dialogs/share-dialog";
 import { ClearAnnotationsDialog } from "./dialogs/clear-annotations-dialog";
@@ -30,9 +34,9 @@ interface SidebarProps {
   measurementUnit: MeasurementUnit;
   formMeasurementUnit: MeasurementUnit;
   setFormMeasurementUnit: (unit: MeasurementUnit) => void;
-  safetyDistance: 70 | 100;
-  formSafetyDistance: 70 | 100;
-  setFormSafetyDistance: (distance: 70 | 100) => void;
+  safetyDistance: SafetyDistance;
+  formSafetyDistance: SafetyDistance;
+  setFormSafetyDistance: (distance: SafetyDistance) => void;
   hasFormChanges: boolean;
   setHasFormChanges: (hasChanges: boolean) => void;
   handleFormChange: () => void;

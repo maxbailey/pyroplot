@@ -1,6 +1,7 @@
 "use client";
 
 import { HelpDialog } from "./dialogs/help-dialog";
+import type { SafetyDistance } from "@/lib/types";
 
 interface MapProps {
   mapContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -8,7 +9,7 @@ interface MapProps {
   handleMapDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
   helpOpen: boolean;
   setHelpOpen: (open: boolean) => void;
-  safetyDistance: 70 | 100;
+  safetyDistance: SafetyDistance;
 }
 
 export const Map: React.FC<MapProps> = ({
