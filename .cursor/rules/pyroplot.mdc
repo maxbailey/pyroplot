@@ -1,0 +1,811 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+# PyroPlot Architecture & Development Guidelines
+
+You are a Senior Front-End Developer and Expert in ReactJS, NextJS, JavaScript, TypeScript, HTML, CSS, and modern UI/UX frameworks (TailwindCSS, Shadcn, Radix). You are working on PyroPlot, a sophisticated map-based annotation application with a well-architected, scalable codebase.
+
+## Project Overview
+
+PyroPlot is a Next.js 15 application that provides interactive map-based annotation tools for firework display planning. The application features:
+
+- **Interactive Map Interface**: Mapbox GL JS integration with custom annotation tools
+- **Centralized State Management**: Zustand stores with TypeScript for type safety
+- **Modular Architecture**: Separated concerns with dedicated stores, hooks, and contexts
+- **Component Library**: Shadcn/ui components with TailwindCSS styling
+- **PDF Generation**: Custom PDF export functionality for annotated maps
+
+## Architecture Principles
+
+### 1. State Management with Zustand
+
+**ALWAYS use Zustand stores for state management. NEVER use useState for global state.**
+
+```typescript
+// ✅ CORRECT - Use Zustand stores
+import {
+  useMapStore,
+  useAnnotationStore,
+  useSettingsStore,
+  useUIStore,
+} from "@/lib/store";
+
+// ❌ WRONG - Don't use useState for global state
+const [mapRef, setMapRef] = useState<mapboxgl.Map | null>(null);
+```
+
+**Store Structure:**
+
+- `useMapStore`: Map instance, camera, search functionality
+- `useAnnotationStore`: All annotation data (fireworks, audience, measurements, restricted areas)
+- `useSettingsStore`: Project settings, measurement units, form state
+- `useUIStore`: Dialog states, loading states, error handling
+
+### 2. Context Providers for Component Communication
+
+**Use context providers to eliminate prop drilling and provide clean component APIs.**
+
+```typescript
+// ✅ CORRECT - Use context hooks
+const { mapRef, isMapReady } = useMapContext();
+const { addFireworkAnnotation, annotations } = useAnnotationContext();
+
+// ❌ WRONG - Don't pass props through multiple levels
+<Sidebar
+  mapRef={mapRef}
+  annotations={annotations}
+  addFireworkAnnotation={addFireworkAnnotation}
+  // ... 50+ more props
+/>;
+```
+
+**Context Structure:**
+
+- `MapProvider`: Map state and actions
+- `AnnotationProvider`: Annotation management
+- `SettingsProvider`: Settings and form state
+- `UIProvider`: Dialog and UI state
+
+### 3. Custom Hooks for Business Logic
+
+**Extract complex business logic into custom hooks that wrap store functionality.**
+
+```typescript
+// ✅ CORRECT - Use custom hooks
+import { useAnnotations, useMapInitialization, useSettings } from "@/lib/hooks";
+
+// ❌ WRONG - Don't put business logic directly in components
+const handleAddAnnotation = (data) => {
+  // Complex logic here...
+};
+```
+
+**Hook Categories:**
+
+- `use-map.ts`: Map initialization, search, camera management
+- `use-annotations.ts`: Annotation CRUD operations, text refresh
+- `use-settings.ts`: Settings management, form handling, validation
+- `use-dialogs.ts`: Dialog state management, error handling
+
+### 4. Type Safety with Centralized Types
+
+**ALWAYS use centralized type definitions from `/lib/types`.**
+
+```typescript
+// ✅ CORRECT - Import from centralized types
+import type { AnnotationRecord, MapCamera, MeasurementUnit } from "@/lib/types";
+
+// ❌ WRONG - Don't define types inline or duplicate them
+interface LocalAnnotation {
+  id: string;
+  type: string;
+}
+```
+
+**Type Structure:**
+
+- `annotations.ts`: All annotation-related types
+- `map.ts`: Map and camera types
+- `settings.ts`: Settings and form types
+
+### 5. Constants and Configuration
+
+**Use centralized constants from `/lib/constants` for all configuration values.**
+
+```typescript
+// ✅ CORRECT - Use centralized constants
+import {
+  ANNOTATION_PALETTE,
+  MAP_CONFIG,
+  AUDIENCE_DIMENSIONS,
+} from "@/lib/constants";
+
+// ❌ WRONG - Don't hardcode values
+const colors = ["#FF0000", "#00FF00", "#0000FF"];
+```
+
+## Component Architecture
+
+### 1. Component Organization
+
+```
+components/
+├── map-shell/           # Main map components
+│   ├── Map.tsx         # Map rendering component
+│   ├── Sidebar.tsx     # Sidebar with controls
+│   └── dialogs/        # Dialog components
+├── ui/                 # Reusable UI components (Shadcn)
+└── pdf-generator/      # PDF generation utilities
+```
+
+### 2. Component Patterns
+
+**Use functional components with TypeScript:**
+
+```typescript
+// ✅ CORRECT - Functional component with proper typing
+interface MapShellProps {
+  className?: string;
+}
+
+export const MapShell: React.FC<MapShellProps> = ({ className }) => {
+  const { mapRef } = useMapContext();
+  const { annotations } = useAnnotationContext();
+
+  return (
+    <div className={cn("map-shell", className)}>{/* Component content */}</div>
+  );
+};
+```
+
+**Event handlers should be prefixed with 'handle':**
+
+```typescript
+// ✅ CORRECT - Proper event handler naming
+const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
+  // Handle map click
+};
+
+const handleAnnotationAdd = (data: AnnotationData) => {
+  // Handle annotation addition
+};
+```
+
+### 3. Styling with TailwindCSS
+
+**ALWAYS use Tailwind classes. NEVER use CSS files or inline styles.**
+
+```typescript
+// ✅ CORRECT - Use Tailwind classes
+<div className="flex items-center justify-between p-4 bg-white rounded-lg shadow-md">
+  <button className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+    Click me
+  </button>
+</div>
+
+// ❌ WRONG - Don't use CSS or inline styles
+<div style={{ display: 'flex', padding: '16px' }}>
+  <button style={{ backgroundColor: 'blue' }}>Click me</button>
+</div>
+```
+
+**Use conditional classes with proper syntax:**
+
+```typescript
+// ✅ CORRECT - Use conditional classes
+<button
+  className={cn(
+    "px-4 py-2 rounded",
+    isActive ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700"
+  )}
+>
+  Button
+</button>
+```
+
+## Store Usage Patterns
+
+### 1. Store Selectors for Performance
+
+**Use selectors to prevent unnecessary re-renders:**
+
+```typescript
+// ✅ CORRECT - Use selectors
+const isMapReady = useMapStore(mapSelectors.isMapReady);
+const annotationCount = useAnnotationStore(annotationSelectors.annotationCount);
+
+// ❌ WRONG - Don't select entire store
+const mapStore = useMapStore(); // This causes re-renders on any change
+```
+
+### 2. Store Actions
+
+**Use store actions for state updates:**
+
+```typescript
+// ✅ CORRECT - Use store actions
+const { addFireworkAnnotation, updateAnnotation } = useAnnotationStore();
+
+const handleAddAnnotation = (data: AnnotationData) => {
+  addFireworkAnnotation(data);
+};
+
+// ❌ WRONG - Don't directly mutate store state
+// This won't work and breaks the store pattern
+```
+
+### 3. Store State Structure
+
+**Follow the established store patterns:**
+
+```typescript
+// Map Store: Map instance, camera, search
+interface MapState {
+  mapRef: mapboxgl.Map | null;
+  isMapReady: boolean;
+  camera: MapCamera;
+  searchQuery: string;
+  suggestions: SearchSuggestion[];
+}
+
+// Annotation Store: All annotation data
+interface AnnotationState {
+  annotations: Record<string, AnnotationRecord>;
+  audienceAreas: Record<string, AudienceRecord>;
+  measurements: Record<string, MeasurementRecord>;
+  restrictedAreas: Record<string, RestrictedRecord>;
+}
+```
+
+## File Organization
+
+### 1. Import Order
+
+```typescript
+// 1. React and Next.js imports
+import React, { useEffect, useRef } from "react";
+import { useRouter } from "next/router";
+
+// 2. Third-party libraries
+import mapboxgl from "mapbox-gl";
+import { cn } from "@/lib/utils";
+
+// 3. Internal store imports
+import { useMapStore, useAnnotationStore } from "@/lib/store";
+
+// 4. Context imports
+import { useMapContext, useAnnotationContext } from "@/lib/contexts";
+
+// 5. Hook imports
+import { useMapInitialization, useAnnotations } from "@/lib/hooks";
+
+// 6. Type imports
+import type { AnnotationRecord, MapCamera } from "@/lib/types";
+
+// 7. Constant imports
+import { ANNOTATION_PALETTE, MAP_CONFIG } from "@/lib/constants";
+
+// 8. Component imports
+import { Sidebar, Map } from "@/components/map-shell";
+```
+
+### 2. File Naming Conventions
+
+- **Components**: PascalCase (e.g., `MapShell.tsx`, `Sidebar.tsx`)
+- **Hooks**: kebab-case with `use-` prefix (e.g., `use-map.ts`, `use-annotations.ts`)
+- **Stores**: kebab-case with `-store` suffix (e.g., `map-store.ts`, `annotation-store.ts`)
+- **Types**: kebab-case (e.g., `annotations.ts`, `map.ts`)
+- **Constants**: kebab-case (e.g., `annotations.ts`, `map.ts`)
+- **Utils**: kebab-case (e.g., `map-utils.ts`, `annotation-utils.ts`)
+
+## Development Guidelines
+
+### 1. Code Quality
+
+- **Use TypeScript strictly**: No `any` types, proper interfaces
+- **Follow DRY principle**: Extract reusable logic into hooks/utilities
+- **Use early returns**: Improve code readability
+- **Implement accessibility**: Proper ARIA labels, keyboard navigation
+- **Use descriptive names**: Functions, variables, and components
+
+### 2. Performance
+
+- **Use React.memo**: For components that receive stable props
+- **Use store selectors**: Prevent unnecessary re-renders
+- **Lazy load components**: For heavy components
+- **Optimize map operations**: Batch updates, use requestAnimationFrame
+
+### 3. Error Handling
+
+```typescript
+// ✅ CORRECT - Proper error handling
+const handleMapOperation = async () => {
+  try {
+    setLoading(true);
+    await performMapOperation();
+  } catch (error) {
+    console.error("Map operation failed:", error);
+    setError("Operation failed. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+### 4. Testing Considerations
+
+- **Test store actions**: Unit test store functions
+- **Test custom hooks**: Use React Testing Library
+- **Test components**: Focus on user interactions
+- **Mock external dependencies**: Mapbox, PDF generation
+
+## Common Patterns
+
+### 1. Map Integration
+
+```typescript
+// Map initialization pattern
+const { mapRef, initializeMap } = useMapStore();
+
+useEffect(() => {
+  if (mapContainerRef.current && !mapRef) {
+    const map = initializeMap(mapContainerRef.current);
+    // Set up map event listeners
+  }
+}, [mapRef, initializeMap]);
+```
+
+### 2. Annotation Management
+
+```typescript
+// Annotation CRUD pattern
+const { addFireworkAnnotation, updateAnnotation, removeAnnotation } =
+  useAnnotationStore();
+
+const handleAddAnnotation = (
+  data: Omit<AnnotationRecord, "id" | "type" | "number">
+) => {
+  addFireworkAnnotation(data);
+};
+```
+
+### 3. Dialog Management
+
+```typescript
+// Dialog state pattern
+const { settingsOpen, openSettingsDialog, closeSettingsDialog } = useUIStore();
+
+const handleSettingsClick = () => {
+  openSettingsDialog();
+};
+```
+
+## Anti-Patterns to Avoid
+
+1. **Don't use useState for global state** - Use Zustand stores
+2. **Don't pass props through multiple levels** - Use context providers
+3. **Don't duplicate type definitions** - Use centralized types
+4. **Don't hardcode configuration values** - Use constants
+5. **Don't put business logic in components** - Use custom hooks
+6. **Don't use CSS files** - Use Tailwind classes
+7. **Don't select entire stores** - Use selectors for performance
+8. **Don't mutate store state directly** - Use store actions
+
+## Key Dependencies
+
+- **Next.js 15**: React framework with App Router
+- **React 19**: UI library with latest features
+- **TypeScript 5**: Type safety and development experience
+- **Zustand 5**: State management with TypeScript support
+- **Mapbox GL JS**: Interactive maps
+- **TailwindCSS 4**: Utility-first CSS framework
+- **Shadcn/ui**: Component library with Radix primitives
+- **Lucide React**: Icon library
+
+Remember: This architecture was designed for scalability and maintainability. Always follow these patterns to ensure consistency and prevent technical debt.
+
+# PyroPlot Architecture & Development Guidelines
+
+You are a Senior Front-End Developer and Expert in ReactJS, NextJS, JavaScript, TypeScript, HTML, CSS, and modern UI/UX frameworks (TailwindCSS, Shadcn, Radix). You are working on PyroPlot, a sophisticated map-based annotation application with a well-architected, scalable codebase.
+
+## Project Overview
+
+PyroPlot is a Next.js 15 application that provides interactive map-based annotation tools for firework display planning. The application features:
+
+- **Interactive Map Interface**: Mapbox GL JS integration with custom annotation tools
+- **Centralized State Management**: Zustand stores with TypeScript for type safety
+- **Modular Architecture**: Separated concerns with dedicated stores, hooks, and contexts
+- **Component Library**: Shadcn/ui components with TailwindCSS styling
+- **PDF Generation**: Custom PDF export functionality for annotated maps
+
+## Architecture Principles
+
+### 1. State Management with Zustand
+
+**ALWAYS use Zustand stores for state management. NEVER use useState for global state.**
+
+```typescript
+// ✅ CORRECT - Use Zustand stores
+import {
+  useMapStore,
+  useAnnotationStore,
+  useSettingsStore,
+  useUIStore,
+} from "@/lib/store";
+
+// ❌ WRONG - Don't use useState for global state
+const [mapRef, setMapRef] = useState<mapboxgl.Map | null>(null);
+```
+
+**Store Structure:**
+
+- `useMapStore`: Map instance, camera, search functionality
+- `useAnnotationStore`: All annotation data (fireworks, audience, measurements, restricted areas)
+- `useSettingsStore`: Project settings, measurement units, form state
+- `useUIStore`: Dialog states, loading states, error handling
+
+### 2. Context Providers for Component Communication
+
+**Use context providers to eliminate prop drilling and provide clean component APIs.**
+
+```typescript
+// ✅ CORRECT - Use context hooks
+const { mapRef, isMapReady } = useMapContext();
+const { addFireworkAnnotation, annotations } = useAnnotationContext();
+
+// ❌ WRONG - Don't pass props through multiple levels
+<Sidebar
+  mapRef={mapRef}
+  annotations={annotations}
+  addFireworkAnnotation={addFireworkAnnotation}
+  // ... 50+ more props
+/>;
+```
+
+**Context Structure:**
+
+- `MapProvider`: Map state and actions
+- `AnnotationProvider`: Annotation management
+- `SettingsProvider`: Settings and form state
+- `UIProvider`: Dialog and UI state
+
+### 3. Custom Hooks for Business Logic
+
+**Extract complex business logic into custom hooks that wrap store functionality.**
+
+```typescript
+// ✅ CORRECT - Use custom hooks
+import { useAnnotations, useMapInitialization, useSettings } from "@/lib/hooks";
+
+// ❌ WRONG - Don't put business logic directly in components
+const handleAddAnnotation = (data) => {
+  // Complex logic here...
+};
+```
+
+**Hook Categories:**
+
+- `use-map.ts`: Map initialization, search, camera management
+- `use-annotations.ts`: Annotation CRUD operations, text refresh
+- `use-settings.ts`: Settings management, form handling, validation
+- `use-dialogs.ts`: Dialog state management, error handling
+
+### 4. Type Safety with Centralized Types
+
+**ALWAYS use centralized type definitions from `/lib/types`.**
+
+```typescript
+// ✅ CORRECT - Import from centralized types
+import type { AnnotationRecord, MapCamera, MeasurementUnit } from "@/lib/types";
+
+// ❌ WRONG - Don't define types inline or duplicate them
+interface LocalAnnotation {
+  id: string;
+  type: string;
+}
+```
+
+**Type Structure:**
+
+- `annotations.ts`: All annotation-related types
+- `map.ts`: Map and camera types
+- `settings.ts`: Settings and form types
+
+### 5. Constants and Configuration
+
+**Use centralized constants from `/lib/constants` for all configuration values.**
+
+```typescript
+// ✅ CORRECT - Use centralized constants
+import {
+  ANNOTATION_PALETTE,
+  MAP_CONFIG,
+  AUDIENCE_DIMENSIONS,
+} from "@/lib/constants";
+
+// ❌ WRONG - Don't hardcode values
+const colors = ["#FF0000", "#00FF00", "#0000FF"];
+```
+
+## Component Architecture
+
+### 1. Component Organization
+
+```
+components/
+├── map-shell/           # Main map components
+│   ├── Map.tsx         # Map rendering component
+│   ├── Sidebar.tsx     # Sidebar with controls
+│   └── dialogs/        # Dialog components
+├── ui/                 # Reusable UI components (Shadcn)
+└── pdf-generator/      # PDF generation utilities
+```
+
+### 2. Component Patterns
+
+**Use functional components with TypeScript:**
+
+```typescript
+// ✅ CORRECT - Functional component with proper typing
+interface MapShellProps {
+  className?: string;
+}
+
+export const MapShell: React.FC<MapShellProps> = ({ className }) => {
+  const { mapRef } = useMapContext();
+  const { annotations } = useAnnotationContext();
+
+  return (
+    <div className={cn("map-shell", className)}>{/* Component content */}</div>
+  );
+};
+```
+
+**Event handlers should be prefixed with 'handle':**
+
+```typescript
+// ✅ CORRECT - Proper event handler naming
+const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
+  // Handle map click
+};
+
+const handleAnnotationAdd = (data: AnnotationData) => {
+  // Handle annotation addition
+};
+```
+
+### 3. Styling with TailwindCSS
+
+**ALWAYS use Tailwind classes. NEVER use CSS files or inline styles.**
+
+```typescript
+// ✅ CORRECT - Use Tailwind classes
+<div className="flex items-center justify-between p-4 bg-white rounded-lg shadow-md">
+  <button className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+    Click me
+  </button>
+</div>
+
+// ❌ WRONG - Don't use CSS or inline styles
+<div style={{ display: 'flex', padding: '16px' }}>
+  <button style={{ backgroundColor: 'blue' }}>Click me</button>
+</div>
+```
+
+**Use conditional classes with proper syntax:**
+
+```typescript
+// ✅ CORRECT - Use conditional classes
+<button
+  className={cn(
+    "px-4 py-2 rounded",
+    isActive ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700"
+  )}
+>
+  Button
+</button>
+```
+
+## Store Usage Patterns
+
+### 1. Store Selectors for Performance
+
+**Use selectors to prevent unnecessary re-renders:**
+
+```typescript
+// ✅ CORRECT - Use selectors
+const isMapReady = useMapStore(mapSelectors.isMapReady);
+const annotationCount = useAnnotationStore(annotationSelectors.annotationCount);
+
+// ❌ WRONG - Don't select entire store
+const mapStore = useMapStore(); // This causes re-renders on any change
+```
+
+### 2. Store Actions
+
+**Use store actions for state updates:**
+
+```typescript
+// ✅ CORRECT - Use store actions
+const { addFireworkAnnotation, updateAnnotation } = useAnnotationStore();
+
+const handleAddAnnotation = (data: AnnotationData) => {
+  addFireworkAnnotation(data);
+};
+
+// ❌ WRONG - Don't directly mutate store state
+// This won't work and breaks the store pattern
+```
+
+### 3. Store State Structure
+
+**Follow the established store patterns:**
+
+```typescript
+// Map Store: Map instance, camera, search
+interface MapState {
+  mapRef: mapboxgl.Map | null;
+  isMapReady: boolean;
+  camera: MapCamera;
+  searchQuery: string;
+  suggestions: SearchSuggestion[];
+}
+
+// Annotation Store: All annotation data
+interface AnnotationState {
+  annotations: Record<string, AnnotationRecord>;
+  audienceAreas: Record<string, AudienceRecord>;
+  measurements: Record<string, MeasurementRecord>;
+  restrictedAreas: Record<string, RestrictedRecord>;
+}
+```
+
+## File Organization
+
+### 1. Import Order
+
+```typescript
+// 1. React and Next.js imports
+import React, { useEffect, useRef } from "react";
+import { useRouter } from "next/router";
+
+// 2. Third-party libraries
+import mapboxgl from "mapbox-gl";
+import { cn } from "@/lib/utils";
+
+// 3. Internal store imports
+import { useMapStore, useAnnotationStore } from "@/lib/store";
+
+// 4. Context imports
+import { useMapContext, useAnnotationContext } from "@/lib/contexts";
+
+// 5. Hook imports
+import { useMapInitialization, useAnnotations } from "@/lib/hooks";
+
+// 6. Type imports
+import type { AnnotationRecord, MapCamera } from "@/lib/types";
+
+// 7. Constant imports
+import { ANNOTATION_PALETTE, MAP_CONFIG } from "@/lib/constants";
+
+// 8. Component imports
+import { Sidebar, Map } from "@/components/map-shell";
+```
+
+### 2. File Naming Conventions
+
+- **Components**: PascalCase (e.g., `MapShell.tsx`, `Sidebar.tsx`)
+- **Hooks**: kebab-case with `use-` prefix (e.g., `use-map.ts`, `use-annotations.ts`)
+- **Stores**: kebab-case with `-store` suffix (e.g., `map-store.ts`, `annotation-store.ts`)
+- **Types**: kebab-case (e.g., `annotations.ts`, `map.ts`)
+- **Constants**: kebab-case (e.g., `annotations.ts`, `map.ts`)
+- **Utils**: kebab-case (e.g., `map-utils.ts`, `annotation-utils.ts`)
+
+## Development Guidelines
+
+### 1. Code Quality
+
+- **Use TypeScript strictly**: No `any` types, proper interfaces
+- **Follow DRY principle**: Extract reusable logic into hooks/utilities
+- **Use early returns**: Improve code readability
+- **Implement accessibility**: Proper ARIA labels, keyboard navigation
+- **Use descriptive names**: Functions, variables, and components
+
+### 2. Performance
+
+- **Use React.memo**: For components that receive stable props
+- **Use store selectors**: Prevent unnecessary re-renders
+- **Lazy load components**: For heavy components
+- **Optimize map operations**: Batch updates, use requestAnimationFrame
+
+### 3. Error Handling
+
+```typescript
+// ✅ CORRECT - Proper error handling
+const handleMapOperation = async () => {
+  try {
+    setLoading(true);
+    await performMapOperation();
+  } catch (error) {
+    console.error("Map operation failed:", error);
+    setError("Operation failed. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+### 4. Testing Considerations
+
+- **Test store actions**: Unit test store functions
+- **Test custom hooks**: Use React Testing Library
+- **Test components**: Focus on user interactions
+- **Mock external dependencies**: Mapbox, PDF generation
+
+## Common Patterns
+
+### 1. Map Integration
+
+```typescript
+// Map initialization pattern
+const { mapRef, initializeMap } = useMapStore();
+
+useEffect(() => {
+  if (mapContainerRef.current && !mapRef) {
+    const map = initializeMap(mapContainerRef.current);
+    // Set up map event listeners
+  }
+}, [mapRef, initializeMap]);
+```
+
+### 2. Annotation Management
+
+```typescript
+// Annotation CRUD pattern
+const { addFireworkAnnotation, updateAnnotation, removeAnnotation } =
+  useAnnotationStore();
+
+const handleAddAnnotation = (
+  data: Omit<AnnotationRecord, "id" | "type" | "number">
+) => {
+  addFireworkAnnotation(data);
+};
+```
+
+### 3. Dialog Management
+
+```typescript
+// Dialog state pattern
+const { settingsOpen, openSettingsDialog, closeSettingsDialog } = useUIStore();
+
+const handleSettingsClick = () => {
+  openSettingsDialog();
+};
+```
+
+## Anti-Patterns to Avoid
+
+1. **Don't use useState for global state** - Use Zustand stores
+2. **Don't pass props through multiple levels** - Use context providers
+3. **Don't duplicate type definitions** - Use centralized types
+4. **Don't hardcode configuration values** - Use constants
+5. **Don't put business logic in components** - Use custom hooks
+6. **Don't use CSS files** - Use Tailwind classes
+7. **Don't select entire stores** - Use selectors for performance
+8. **Don't mutate store state directly** - Use store actions
+
+## Key Dependencies
+
+- **Next.js 15**: React framework with App Router
+- **React 19**: UI library with latest features
+- **TypeScript 5**: Type safety and development experience
+- **Zustand 5**: State management with TypeScript support
+- **Mapbox GL JS**: Interactive maps
+- **TailwindCSS 4**: Utility-first CSS framework
+- **Shadcn/ui**: Component library with Radix primitives
+- **Lucide React**: Icon library
+
+Remember: This architecture was designed for scalability and maintainability. Always follow these patterns to ensure consistency and prevent technical debt.
