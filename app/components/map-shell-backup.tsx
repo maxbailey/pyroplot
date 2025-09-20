@@ -1,9 +1,27 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import mapboxgl from "mapbox-gl";
-import { Sidebar, Map } from "@/components/map-shell";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 // Removed slider; we switch whole styles for performance
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
@@ -3713,68 +3731,660 @@ export function MapShell() {
 
   return (
     <div className="h-screen w-screen flex overflow-hidden">
-      <Sidebar
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        suggestions={suggestions}
-        setSuggestions={setSuggestions}
-        activeIndex={activeIndex}
-        setActiveIndex={setActiveIndex}
-        handleSubmitOrSelect={handleSubmitOrSelect}
-        settingsOpen={settingsOpen}
-        setSettingsOpen={setSettingsOpen}
-        projectName={projectName}
-        formProjectName={formProjectName}
-        setFormProjectName={setFormProjectName}
-        measurementUnit={measurementUnit}
-        formMeasurementUnit={formMeasurementUnit}
-        setFormMeasurementUnit={setFormMeasurementUnit}
-        safetyDistance={safetyDistance}
-        formSafetyDistance={formSafetyDistance}
-        setFormSafetyDistance={setFormSafetyDistance}
-        hasFormChanges={hasFormChanges}
-        setHasFormChanges={setHasFormChanges}
-        handleFormChange={handleFormChange}
-        handleSaveSettings={handleSaveSettings}
-        handleCancelSettings={handleCancelSettings}
-        customAnnotationOpen={customAnnotationOpen}
-        setCustomAnnotationOpen={setCustomAnnotationOpen}
-        customLabel={customLabel}
-        setCustomLabel={setCustomLabel}
-        customColor={customColor}
-        setCustomColor={setCustomColor}
-        editingCustomAnnotation={editingCustomAnnotation}
-        setEditingCustomAnnotation={setEditingCustomAnnotation}
-        handleSaveCustomAnnotation={handleSaveCustomAnnotation}
-        handleCancelCustomAnnotation={handleCancelCustomAnnotation}
-        mapRef={mapRef}
-        showHeight={showHeight}
-        setShowHeight={setShowHeight}
-        isGenerating={isGenerating}
-        generateSitePlanPdf={generateSitePlanPdf}
-        shareOpen={shareOpen}
-        setShareOpen={setShareOpen}
-        shareUrl={shareUrl}
-        copied={copied}
-        setCopied={setCopied}
-        openShareDialog={openShareDialog}
-        clearAllAnnotations={clearAllAnnotations}
-        disclaimerOpen={disclaimerOpen}
-        setDisclaimerOpen={setDisclaimerOpen}
-        annotationsRef={annotationsRef}
-        addExtrusionForAnnotation={addExtrusionForAnnotation}
-        removeExtrusionForAnnotation={removeExtrusionForAnnotation}
-      />
-      <Map
-        mapContainerRef={mapContainerRef}
-        handleMapDrop={handleMapDrop}
-        handleMapDragOver={handleMapDragOver}
-        disclaimerOpen={disclaimerOpen}
-        setDisclaimerOpen={setDisclaimerOpen}
-        helpOpen={helpOpen}
-        setHelpOpen={setHelpOpen}
-        safetyDistance={safetyDistance}
-      />
+      <aside className="w-[300px] shrink-0 border-r border-border p-4 space-y-4 overflow-y-auto">
+        <div className="flex items-center justify-center select-none">
+          <Image
+            src="/pyroplot-logo.svg"
+            alt="Pyro Plot"
+            width={140}
+            height={100}
+          />
+        </div>
+
+        <div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (activeIndex >= 0 && activeIndex < suggestions.length) {
+                void handleSubmitOrSelect(suggestions[activeIndex]?.id);
+              } else {
+                void handleSubmitOrSelect();
+              }
+            }}
+            className="space-y-2"
+          >
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown" && suggestions.length > 0) {
+                  e.preventDefault();
+                  setActiveIndex((idx) => (idx + 1) % suggestions.length);
+                } else if (e.key === "ArrowUp" && suggestions.length > 0) {
+                  e.preventDefault();
+                  setActiveIndex(
+                    (idx) => (idx - 1 + suggestions.length) % suggestions.length
+                  );
+                } else if (e.key === "Escape") {
+                  setSuggestions([]);
+                  setActiveIndex(-1);
+                }
+              }}
+              placeholder="Search for a place on Earth..."
+              role="combobox"
+              aria-expanded={suggestions.length > 0}
+              aria-controls="search-suggestions"
+              aria-activedescendant={
+                activeIndex >= 0 && suggestions[activeIndex]
+                  ? `sugg-${suggestions[activeIndex]!.id}`
+                  : undefined
+              }
+              className="w-full rounded-md border border-input bg-white/5 px-3 py-2 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </form>
+          {suggestions.length > 0 && (
+            <ul
+              id="search-suggestions"
+              role="listbox"
+              className="mt-2 max-h-60 overflow-auto rounded-md border border-border bg-popover text-sm"
+            >
+              {suggestions.map((s, i) => (
+                <li
+                  id={`sugg-${s.id}`}
+                  role="option"
+                  aria-selected={i === activeIndex}
+                  key={s.id}
+                  className={`cursor-pointer px-3 py-2 ${
+                    i === activeIndex ? "bg-muted" : "hover:bg-muted"
+                  }`}
+                  onMouseEnter={() => setActiveIndex(i)}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                  }}
+                  onClick={() => void handleSubmitOrSelect(s.id)}
+                >
+                  {s.text}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="pt-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+            Annotations
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {annotationPalette.map((a) => (
+              <button
+                key={a.key}
+                title={a.label}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = "copy";
+                  e.dataTransfer.setData(
+                    "text/plain",
+                    JSON.stringify({
+                      key: a.key,
+                      glyph:
+                        a.key === "audience"
+                          ? "🤩"
+                          : a.key === "measurement"
+                          ? "📐"
+                          : a.key === "restricted"
+                          ? "🚫"
+                          : a.key === "custom"
+                          ? "✨"
+                          : "💥",
+                    })
+                  );
+                }}
+                className="h-9 w-full grid grid-cols-[20px_1fr] items-center text-start gap-0.5 rounded-md border border-border bg-white/5 !cursor-move hover:bg-muted px-2 text-xs"
+                type="button"
+              >
+                <span>
+                  {a.key === "audience"
+                    ? "🤩"
+                    : a.key === "measurement"
+                    ? "📐"
+                    : a.key === "restricted"
+                    ? "🚫"
+                    : a.key === "custom"
+                    ? "✨"
+                    : "💥"}
+                </span>
+                <span className="truncate">{a.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="pt-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+            Actions
+          </div>
+          <div className="flex flex-col items-stretch gap-2">
+            <Dialog
+              open={settingsOpen}
+              onOpenChange={(o) => setSettingsOpen(o)}
+            >
+              <div className="flex justify-between items-center gap-2">
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    Settings
+                  </button>
+                </DialogTrigger>
+              </div>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Settings</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">
+                      Project Name
+                    </label>
+                    <Input
+                      value={formProjectName}
+                      onChange={(e) => {
+                        setFormProjectName(e.target.value);
+                        handleFormChange();
+                      }}
+                      placeholder="Enter project name"
+                    />
+                  </div>
+                  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">
+                      Measurement Unit
+                    </label>
+                    <Select
+                      value={formMeasurementUnit}
+                      onValueChange={(v) => {
+                        setFormMeasurementUnit(v as MeasurementUnit);
+                        handleFormChange();
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="feet">Feet</SelectItem>
+                        <SelectItem value="meters">Meters</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">
+                      Safety Distance
+                    </label>
+                    <Select
+                      value={formSafetyDistance.toString()}
+                      onValueChange={(v) => {
+                        setFormSafetyDistance(Number(v) as 70 | 100);
+                        handleFormChange();
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select safety distance" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="70">70ft per inch</SelectItem>
+                        <SelectItem value="100">100ft per inch</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <button
+                    type="button"
+                    onClick={handleCancelSettings}
+                    className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveSettings}
+                    disabled={!hasFormChanges}
+                    className="inline-flex items-center justify-center rounded-md bg-brand text-white px-3 py-2 text-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Save Changes
+                  </button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Custom Annotation Dialog */}
+            <Dialog
+              open={customAnnotationOpen}
+              onOpenChange={setCustomAnnotationOpen}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Custom Annotation</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">
+                      Label
+                    </label>
+                    <Input
+                      value={customLabel}
+                      onChange={(e) => setCustomLabel(e.target.value)}
+                      placeholder="Enter label"
+                    />
+                  </div>
+                  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">
+                      Color
+                    </label>
+                    <div className="grid grid-cols-5 gap-3 w-full max-w-xs">
+                      {colorPresets.map((preset) => (
+                        <button
+                          key={preset.color}
+                          type="button"
+                          onClick={() => {
+                            setCustomColor(preset.color);
+                            handleFormChange();
+                          }}
+                          className={`w-10 h-10 rounded-lg relative flex items-center justify-center ${
+                            customColor === preset.color
+                              ? "ring-2 ring-gray-900"
+                              : "hover:ring-1 hover:ring-gray-400"
+                          }`}
+                          style={{ backgroundColor: preset.color }}
+                          title={preset.name}
+                        >
+                          {customColor === preset.color && (
+                            <svg
+                              className="w-5 h-5 text-white drop-shadow-sm"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <button
+                    type="button"
+                    onClick={handleCancelCustomAnnotation}
+                    className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveCustomAnnotation}
+                    className="inline-flex items-center justify-center rounded-md bg-brand text-white px-3 py-2 text-sm hover:opacity-90"
+                  >
+                    Save
+                  </button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!mapRef.current) return;
+                mapRef.current.easeTo({
+                  center: mapRef.current.getCenter(),
+                  zoom: mapRef.current.getZoom(),
+                  pitch: 30,
+                  bearing: 0,
+                  duration: 600,
+                });
+              }}
+              className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+            >
+              Reset Camera
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowHeight((prev) => {
+                  const next = !prev;
+                  const map = mapRef.current;
+                  if (!map) return next;
+                  // apply or remove on all existing annotations
+                  for (const key of Object.keys(annotationsRef.current)) {
+                    const rec = annotationsRef.current[key]!;
+                    if (next) addExtrusionForAnnotation(rec);
+                    else removeExtrusionForAnnotation(rec);
+                  }
+                  return next;
+                });
+              }}
+              className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+            >
+              {showHeight ? "Hide Height" : "Show Height"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void generateSitePlanPdf()}
+              disabled={isGenerating}
+              className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted disabled:opacity-60"
+            >
+              {isGenerating ? "Generating…" : "Generate Site Plan"}
+            </button>
+            <Dialog
+              open={shareOpen}
+              onOpenChange={(open) => {
+                setShareOpen(open);
+                if (!open) setCopied(false);
+              }}
+            >
+              <div className="flex justify-between items-center gap-2">
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => void openShareDialog()}
+                    className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    Share Site Plan
+                  </button>
+                </DialogTrigger>
+              </div>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Share this site plan</DialogTitle>
+                  <DialogDescription>
+                    Copy this link to share. Opening it restores the current
+                    camera and annotations.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <input
+                    value={shareUrl}
+                    readOnly
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(shareUrl);
+                          setCopied(true);
+                        } catch {}
+                      }}
+                      className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                    >
+                      {copied ? "✓ Copied Link" : "Copy link"}
+                    </button>
+                    <DialogClose asChild>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                      >
+                        Close
+                      </button>
+                    </DialogClose>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Dialog>
+              <div className="flex justify-between items-center gap-2">
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background text-brand px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    Clear Annotations
+                  </button>
+                </DialogTrigger>
+              </div>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Clear annotations?</DialogTitle>
+                  <DialogDescription>
+                    This will remove all annotations you have added to the map.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+                    >
+                      Cancel
+                    </button>
+                  </DialogClose>
+                  <DialogClose asChild>
+                    <button
+                      type="button"
+                      onClick={() => clearAllAnnotations()}
+                      className="inline-flex items-center justify-center rounded-md bg-brand text-white px-3 py-2 text-sm hover:opacity-90"
+                    >
+                      Confirm clear
+                    </button>
+                  </DialogClose>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+          <p className="mt-6 text-xs text-muted-foreground text-center">
+            © {new Date().getFullYear()} Pyro Plot. All rights reserved.
+            <br />
+            For planning only, not a substitute for safety training or legal
+            approval.{" "}
+            <button
+              type="button"
+              onClick={() => setDisclaimerOpen(true)}
+              className="text-white hover:text-white/70 hover:underline"
+            >
+              Learn more
+            </button>
+          </p>
+        </div>
+      </aside>
+
+      <div className="flex-1">
+        <div
+          ref={mapContainerRef}
+          className="h-full w-full"
+          onDrop={handleMapDrop}
+          onDragOver={handleMapDragOver}
+        />
+      </div>
+
+      <Dialog open={disclaimerOpen} onOpenChange={setDisclaimerOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Disclaimer</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm text-white/70">
+            <p>
+              Pyro Plot is provided for informational and planning purposes
+              only. It is not a substitute for professional consultation, legal
+              guidance, or safety training.
+            </p>
+            <p>
+              All calculations and visualizations generated by Pyro Plot are
+              based on generally accepted guidelines (including NFPA 1123
+              recommendations of {safetyDistance} ft per inch of shell diameter)
+              and other commonly referenced standards. However, fireworks
+              regulations vary by state, county, city, and site conditions. You
+              must always confirm requirements with, and obtain approval from,
+              your local Authority Having Jurisdiction (AHJ) before conducting
+              any fireworks display. Local laws, site-specific geography, and
+              weather conditions may override or alter these guidelines.
+            </p>
+            <p>
+              Pyro Plot does not guarantee accuracy, completeness, or compliance
+              with applicable laws. By using this tool, you acknowledge that you
+              assume full responsibility for how the information is applied.
+              Pyro Plot and its creators disclaim any liability for damages,
+              injuries, fines, or legal consequences resulting from the use or
+              misuse of this information.
+            </p>
+            <div>
+              <p className="font-semibold mb-2 text-white">Important:</p>
+              <ul className="list-disc list-inside space-y-1 ml-2">
+                <li>Always follow federal, state, and local regulations.</li>
+                <li>
+                  Consult with licensed display operators and professionals.
+                </li>
+                <li>Prioritize safety at all times.</li>
+                <li>
+                  Never use this tool as your sole source for display planning.
+                </li>
+              </ul>
+            </div>
+            <p>
+              By using Pyro Plot, you agree to these terms and understand that
+              the tool is intended only as a planning aid, not an authoritative
+              guide.
+            </p>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+              >
+                I Understand
+              </button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Floating Action Button */}
+      <button
+        type="button"
+        onClick={() => setHelpOpen(true)}
+        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-brand text-black flex items-center justify-center shadow-lg hover:scale-105 hover:shadow-xl transition-all duration-200 ease-in-out"
+        aria-label="Open help"
+      >
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+          <path d="M12 17h.01" />
+        </svg>
+      </button>
+
+      {/* Help Dialog */}
+      <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>How to Use Pyro Plot</DialogTitle>
+            <DialogDescription>
+              Learn the controls and actions available in the application
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="overflow-hidden border border-border rounded-lg">
+              <table className="w-full">
+                <thead className="bg-muted">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
+                      Action
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
+                      Description
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium">Pan Map</td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      Left-click and drag to move around the map
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium">
+                      Rotate Map
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      Right-click and drag to rotate the map view
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium">Zoom</td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      Scroll wheel to zoom in and out
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium">
+                      Add Annotation
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      Drag annotation from sidebar and drop on map
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium">
+                      Move Annotation
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      Click and drag annotation label to reposition
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium">
+                      Resize Area
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      Drag corner markers to resize audience/restricted areas
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium">
+                      Adjust Measurement
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      Drag measurement points to change distance
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium">
+                      Delete Annotation
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      Right-click on annotation label to remove
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
+              >
+                Got it
+              </button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
