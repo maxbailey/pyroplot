@@ -54,6 +54,7 @@ export function MapShell() {
     removeMeasurement,
     removeRestrictedArea,
     removeCustomAnnotation,
+    getNextAnnotationNumber,
   } = useAnnotationContext();
 
   // Get settings context for measurement unit and safety distance
@@ -67,49 +68,6 @@ export function MapShell() {
   const audienceAreasRef = useRef<Record<string, AudienceRecord>>({});
   const measurementsRef = useRef<Record<string, MeasurementRecord>>({});
   const restrictedAreasRef = useRef<Record<string, RestrictedRecord>>({});
-
-  // Centralized ID management system
-  const nextIdRef = useRef<number>(1);
-  const usedIdsRef = useRef<Set<number>>(new Set());
-
-  // Function to get the next sequential ID
-  const getNextId = () => {
-    // Find the next available ID
-    while (usedIdsRef.current.has(nextIdRef.current)) {
-      nextIdRef.current++;
-    }
-
-    const id = nextIdRef.current;
-    usedIdsRef.current.add(id);
-    nextIdRef.current++;
-
-    console.log(
-      "getNextId() returned:",
-      id,
-      "nextIdRef:",
-      nextIdRef.current,
-      "usedIds:",
-      Array.from(usedIdsRef.current)
-    );
-    return id;
-  };
-
-  // Function to release an ID when an annotation is removed
-  const releaseId = (id: number) => {
-    usedIdsRef.current.delete(id);
-    // If this was the highest ID, we can reset the counter
-    if (id === nextIdRef.current - 1) {
-      nextIdRef.current = id;
-    }
-    console.log(
-      "releaseId() released:",
-      id,
-      "nextIdRef:",
-      nextIdRef.current,
-      "usedIds:",
-      Array.from(usedIdsRef.current)
-    );
-  };
 
   // Note: We don't sync refs with context state because we manage them locally
   // The refs are used for local operations and contain additional data not in the store
@@ -208,8 +166,8 @@ export function MapShell() {
           },
         });
 
-        // Get the next sequential ID
-        const annotationId = getNextId();
+        // Get the next sequential ID from the store
+        const annotationId = getNextAnnotationNumber();
         console.log("Audience area created with ID:", annotationId);
 
         // Create label marker with proper styling
@@ -225,8 +183,6 @@ export function MapShell() {
           evt.preventDefault();
           // Remove from store
           removeAudienceArea(id);
-          // Release the ID
-          releaseId(annotationId);
           // Remove Mapbox layers and markers
           try {
             if (mapInstance.getLayer(`${id}-fill`))
@@ -489,8 +445,8 @@ export function MapShell() {
           },
         });
 
-        // Get the next sequential ID
-        const annotationId = getNextId();
+        // Get the next sequential ID from the store
+        const annotationId = getNextAnnotationNumber();
 
         // Create label marker with proper styling
         const label = document.createElement("div");
@@ -505,8 +461,6 @@ export function MapShell() {
           evt.preventDefault();
           // Remove from store
           removeFireworkAnnotation(id);
-          // Release the ID
-          releaseId(annotationId);
           // Remove Mapbox layers and markers
           try {
             if (mapInstance.getLayer(`${id}-fill`))
@@ -640,8 +594,8 @@ export function MapShell() {
           },
         });
 
-        // Get the next sequential ID
-        const annotationId = getNextId();
+        // Get the next sequential ID from the store
+        const annotationId = getNextAnnotationNumber();
 
         // Create label marker with proper styling
         const label = document.createElement("div");
@@ -656,8 +610,6 @@ export function MapShell() {
           evt.preventDefault();
           // Remove from store
           removeFireworkAnnotation(id);
-          // Release the ID
-          releaseId(annotationId);
           // Remove Mapbox layers and markers
           try {
             if (mapInstance.getLayer(`${id}-fill`))
@@ -796,8 +748,8 @@ export function MapShell() {
           },
         });
 
-        // Get the next sequential ID
-        const annotationId = getNextId();
+        // Get the next sequential ID from the store
+        const annotationId = getNextAnnotationNumber();
 
         // Create label marker at center of line
         const centerLng = (points[0][0] + points[1][0]) / 2;
@@ -815,8 +767,6 @@ export function MapShell() {
           evt.preventDefault();
           // Remove from store
           removeMeasurement(id);
-          // Release the ID
-          releaseId(annotationId);
           // Remove Mapbox layers and markers
           try {
             if (mapInstance.getLayer(`${id}-line`))
@@ -1051,8 +1001,8 @@ export function MapShell() {
           },
         });
 
-        // Get the next sequential ID
-        const annotationId = getNextId();
+        // Get the next sequential ID from the store
+        const annotationId = getNextAnnotationNumber();
         console.log("Restricted area created with ID:", annotationId);
 
         // Create label marker with proper styling
@@ -1068,8 +1018,6 @@ export function MapShell() {
           evt.preventDefault();
           // Remove from store
           removeRestrictedArea(id);
-          // Release the ID
-          releaseId(annotationId);
           // Remove Mapbox layers and markers
           try {
             if (mapInstance.getLayer(`${id}-fill`))
@@ -1299,8 +1247,8 @@ export function MapShell() {
           .toString(36)
           .slice(2)}`;
 
-        // Get the next sequential ID
-        const annotationId = getNextId();
+        // Get the next sequential ID from the store
+        const annotationId = getNextAnnotationNumber();
 
         // Create custom label element (like other annotation types)
         const label = document.createElement("div");
@@ -1321,8 +1269,6 @@ export function MapShell() {
           console.log("Custom annotation right-clicked, removing:", id);
           // Remove from store
           removeCustomAnnotation(id);
-          // Release the ID
-          releaseId(annotationId);
           // Remove Mapbox markers
           try {
             marker.remove();

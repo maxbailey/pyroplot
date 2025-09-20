@@ -309,10 +309,18 @@ export const useAnnotationStore = create<AnnotationStore>()(
 
     getNextAnnotationNumber: () => {
       const state = get();
+      // Collect all annotation numbers from all types
       const allAnnotations = Object.values(state.annotations);
-      const allNumbers = allAnnotations
-        .map((ann) => ann.number)
-        .sort((a, b) => a - b);
+      const allAudienceAreas = Object.values(state.audienceAreas);
+      const allMeasurements = Object.values(state.measurements);
+      const allRestrictedAreas = Object.values(state.restrictedAreas);
+
+      const allNumbers = [
+        ...allAnnotations.map((ann) => ann.number),
+        ...allAudienceAreas.map((area) => area.number),
+        ...allMeasurements.map((meas) => meas.number),
+        ...allRestrictedAreas.map((area) => area.number),
+      ].sort((a, b) => a - b);
 
       let nextNumber = 1;
       for (const num of allNumbers) {

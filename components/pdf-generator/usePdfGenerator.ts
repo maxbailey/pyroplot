@@ -291,11 +291,11 @@ export const usePdfGenerator = ({
                   "text-field": [
                     "case",
                     ["==", ["get", "atype"], "audience"],
-                    ["concat", "Audience ", ["get", "id"]],
+                    ["concat", ["get", "id"], " - Audience"],
                     ["==", ["get", "atype"], "measurement"],
                     ["concat", ["get", "id"], " ", ["get", "units"]],
                     ["==", ["get", "atype"], "restricted"],
-                    ["concat", "Restricted ", ["get", "id"]],
+                    ["concat", ["get", "id"], " - Restricted"],
                     ["==", ["get", "atype"], "custom"],
                     ["get", "id"],
                     ["get", "id"],
