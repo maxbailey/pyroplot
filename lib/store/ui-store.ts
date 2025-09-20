@@ -25,6 +25,10 @@ interface UIState {
   // Error states
   error: string | null;
   warning: string | null;
+
+  // Dialog state helpers
+  hasAnyDialogOpen: boolean;
+  openDialogCount: number;
 }
 
 // UI actions interface
@@ -66,7 +70,7 @@ interface UIActions {
 }
 
 // Combined store type
-type UIStore = UIState & UIActions;
+export type UIStore = UIState & UIActions;
 
 // Initial state
 const initialState: UIState = {
@@ -92,6 +96,10 @@ const initialState: UIState = {
   // Error states
   error: null,
   warning: null,
+
+  // Dialog state helpers
+  hasAnyDialogOpen: false,
+  openDialogCount: 0,
 };
 
 // Create the UI store

@@ -50,7 +50,7 @@ interface MapActions {
 }
 
 // Combined store type
-type MapStore = MapState & MapActions;
+export type MapStore = MapState & MapActions;
 
 // Initial state
 const initialState: MapState = {

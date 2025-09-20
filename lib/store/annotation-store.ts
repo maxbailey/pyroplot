@@ -86,7 +86,7 @@ interface AnnotationActions {
 }
 
 // Combined store type
-type AnnotationStore = AnnotationState & AnnotationActions;
+export type AnnotationStore = AnnotationState & AnnotationActions;
 
 // Initial state
 const initialState: AnnotationState = {

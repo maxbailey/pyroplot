@@ -14,7 +14,9 @@ export interface MapStyle {
 export interface SearchSuggestion {
   id: string;
   text: string;
-  center?: [number, number];
+  place_name?: string;
+  center: [number, number];
+  context?: any;
 }
 
 export interface MapboxSearchResponse {
@@ -22,13 +24,16 @@ export interface MapboxSearchResponse {
     mapbox_id: string;
     name: string;
     place_formatted?: string;
+    place_name?: string;
+    coordinates?: [number, number];
+    context?: any;
   }>;
 }
 
 export interface MapboxGeocodingResponse {
   features?: Array<{
-    id: string;
-    place_name: string;
+    id?: string;
+    place_name?: string;
     center?: [number, number];
     geometry?: { coordinates?: [number, number] };
   }>;

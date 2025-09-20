@@ -4,6 +4,12 @@ export { useAnnotationStore, annotationSelectors } from "./annotation-store";
 export { useSettingsStore, settingsSelectors } from "./settings-store";
 export { useUIStore, uiSelectors } from "./ui-store";
 
+// Import store functions for type inference
+import { useMapStore } from "./map-store";
+import { useAnnotationStore } from "./annotation-store";
+import { useSettingsStore } from "./settings-store";
+import { useUIStore } from "./ui-store";
+
 // Re-export store types for convenience
 export type { MapStore } from "./map-store";
 export type { AnnotationStore } from "./annotation-store";

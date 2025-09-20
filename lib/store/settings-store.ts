@@ -20,6 +20,9 @@ interface SettingsState {
   // Custom annotation form state
   customLabel: string;
   customColor: string;
+
+  // Dialog state
+  settingsOpen: boolean;
 }
 
 // Settings actions interface
@@ -47,25 +50,34 @@ interface SettingsActions {
   cancelSettings: () => void;
   resetForm: () => void;
 
+  // Settings dialog management
+  openSettingsDialog: () => void;
+  closeSettingsDialog: () => void;
+
   // Bulk operations
   loadSettings: (settings: Partial<SettingsState>) => void;
   resetAllSettings: () => void;
+
+  // Validation
+  validateForm: () => { isValid: boolean; errors: string[] };
+  isFormDirty: () => boolean;
 }
 
 // Combined store type
-type SettingsStore = SettingsState & SettingsActions;
+export type SettingsStore = SettingsState & SettingsActions;
 
 // Initial state
 const initialState: SettingsState = {
-  projectName: "",
+  projectName: "Untitled Project",
   measurementUnit: "feet",
   safetyDistance: 70,
-  formProjectName: "",
+  formProjectName: "Untitled Project",
   formMeasurementUnit: "feet",
   formSafetyDistance: 70,
   hasFormChanges: false,
   customLabel: "",
   customColor: "#8B5CF6", // Default custom color
+  settingsOpen: false,
 };
 
 // Create the settings store
@@ -100,6 +112,7 @@ export const useSettingsStore = create<SettingsStore>()(
         measurementUnit: state.formMeasurementUnit,
         safetyDistance: state.formSafetyDistance,
         hasFormChanges: false,
+        settingsOpen: false,
       });
     },
 
@@ -110,18 +123,35 @@ export const useSettingsStore = create<SettingsStore>()(
         formMeasurementUnit: state.measurementUnit,
         formSafetyDistance: state.safetyDistance,
         hasFormChanges: false,
+        settingsOpen: false,
       });
     },
 
-    resetForm: () =>
+    resetForm: () => {
+      const state = get();
       set({
-        formProjectName: "",
-        formMeasurementUnit: "feet",
-        formSafetyDistance: 70,
+        formProjectName: state.projectName,
+        formMeasurementUnit: state.measurementUnit,
+        formSafetyDistance: state.safetyDistance,
         hasFormChanges: false,
         customLabel: "",
         customColor: "#8B5CF6",
-      }),
+      });
+    },
+
+    // Settings dialog management
+    openSettingsDialog: () => {
+      const state = get();
+      set({
+        settingsOpen: true,
+        formProjectName: state.projectName,
+        formMeasurementUnit: state.measurementUnit,
+        formSafetyDistance: state.safetyDistance,
+        hasFormChanges: false,
+      });
+    },
+
+    closeSettingsDialog: () => set({ settingsOpen: false }),
 
     // Bulk operations
     loadSettings: (settings) =>
@@ -136,6 +166,42 @@ export const useSettingsStore = create<SettingsStore>()(
       })),
 
     resetAllSettings: () => set(initialState),
+
+    // Validation
+    validateForm: () => {
+      const state = get();
+      const errors: string[] = [];
+
+      if (!state.formProjectName.trim()) {
+        errors.push("Project name is required");
+      }
+
+      if (state.formProjectName.length > 100) {
+        errors.push("Project name must be less than 100 characters");
+      }
+
+      if (!["feet", "meters"].includes(state.formMeasurementUnit)) {
+        errors.push("Invalid measurement unit");
+      }
+
+      if (![70, 100].includes(state.formSafetyDistance)) {
+        errors.push("Invalid safety distance");
+      }
+
+      return {
+        isValid: errors.length === 0,
+        errors,
+      };
+    },
+
+    isFormDirty: () => {
+      const state = get();
+      return (
+        state.formProjectName !== state.projectName ||
+        state.formMeasurementUnit !== state.measurementUnit ||
+        state.formSafetyDistance !== state.safetyDistance
+      );
+    },
   }))
 );
 
@@ -155,6 +221,9 @@ export const settingsSelectors = {
   // Custom annotation form selectors
   customLabel: (state: SettingsStore) => state.customLabel,
   customColor: (state: SettingsStore) => state.customColor,
+
+  // Dialog state selectors
+  settingsOpen: (state: SettingsStore) => state.settingsOpen,
 
   // Computed selectors
   isFormDirty: (state: SettingsStore) =>
@@ -181,4 +250,9 @@ export const settingsSelectors = {
     label: state.customLabel,
     color: state.customColor,
   }),
+
+  // Display selectors
+  displaySafetyDistance: (state: SettingsStore) => `${state.safetyDistance} ft`,
+  displayMeasurementUnit: (state: SettingsStore) =>
+    state.measurementUnit === "feet" ? "Feet" : "Meters",
 };
