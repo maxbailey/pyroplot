@@ -741,12 +741,6 @@ export function MapShell() {
     }
   }
 
-  // Utility functions moved to PDF generator component
-
-  // removed unused getMetersPerPixel helper
-
-  // generateSitePlanPdf function moved to PDF generator component
-
   // --- Share/Load helpers ---
   interface SerializedFirework {
     id: string;
