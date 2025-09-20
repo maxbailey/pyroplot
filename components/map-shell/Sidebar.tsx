@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -110,17 +110,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   handleSubmitOrSelect,
   settingsOpen,
   setSettingsOpen,
-  projectName,
   formProjectName,
   setFormProjectName,
-  measurementUnit,
   formMeasurementUnit,
   setFormMeasurementUnit,
-  safetyDistance,
   formSafetyDistance,
   setFormSafetyDistance,
   hasFormChanges,
-  setHasFormChanges,
   handleFormChange,
   handleSaveSettings,
   handleCancelSettings,
@@ -130,8 +126,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setCustomLabel,
   customColor,
   setCustomColor,
-  editingCustomAnnotation,
-  setEditingCustomAnnotation,
   handleSaveCustomAnnotation,
   handleCancelCustomAnnotation,
   mapRef,
@@ -146,7 +140,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setCopied,
   openShareDialog,
   clearAllAnnotations,
-  disclaimerOpen,
   setDisclaimerOpen,
   annotationsRef,
   addExtrusionForAnnotation,

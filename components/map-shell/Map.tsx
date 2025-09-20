@@ -29,7 +29,6 @@ export const Map: React.FC<MapProps> = ({
   setDisclaimerOpen,
   helpOpen,
   setHelpOpen,
-  safetyDistance,
 }) => {
   return (
     <>
