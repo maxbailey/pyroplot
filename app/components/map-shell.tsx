@@ -3769,8 +3769,6 @@ export function MapShell() {
         mapContainerRef={mapContainerRef}
         handleMapDrop={handleMapDrop}
         handleMapDragOver={handleMapDragOver}
-        disclaimerOpen={disclaimerOpen}
-        setDisclaimerOpen={setDisclaimerOpen}
         helpOpen={helpOpen}
         setHelpOpen={setHelpOpen}
         safetyDistance={safetyDistance}

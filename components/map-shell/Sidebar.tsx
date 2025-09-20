@@ -8,6 +8,7 @@ import { ShareDialog } from "./dialogs/share-dialog";
 import { ClearAnnotationsDialog } from "./dialogs/clear-annotations-dialog";
 import { CustomAnnotationDialog } from "./dialogs/custom-annotation-dialog";
 import { SettingsDialog } from "./dialogs/settings-dialog";
+import { DisclaimerDialog } from "./dialogs/disclaimer-dialog";
 
 type AnnotationItem = {
   key: string;
@@ -128,6 +129,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setCopied,
   openShareDialog,
   clearAllAnnotations,
+  disclaimerOpen,
   setDisclaimerOpen,
   annotationsRef,
   addExtrusionForAnnotation,
@@ -164,7 +166,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
 
   return (
-    <aside className="w-[300px] shrink-0 border-r border-border p-4 space-y-4 overflow-y-auto">
+    <aside className="w-[300px] p-4 space-y-4 overflow-y-auto">
       {/* Logo */}
       <div className="flex items-center justify-center select-none">
         <Image
@@ -407,6 +409,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </p>
       </div>
+
+      {/* Disclaimer Dialog */}
+      <DisclaimerDialog
+        disclaimerOpen={disclaimerOpen}
+        setDisclaimerOpen={setDisclaimerOpen}
+      />
     </aside>
   );
 };

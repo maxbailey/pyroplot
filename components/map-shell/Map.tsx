@@ -1,14 +1,11 @@
 "use client";
 
-import { DisclaimerDialog } from "./dialogs/disclaimer-dialog";
 import { HelpDialog } from "./dialogs/help-dialog";
 
 interface MapProps {
   mapContainerRef: React.RefObject<HTMLDivElement | null>;
   handleMapDrop: (e: React.DragEvent<HTMLDivElement>) => void;
   handleMapDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
-  disclaimerOpen: boolean;
-  setDisclaimerOpen: (open: boolean) => void;
   helpOpen: boolean;
   setHelpOpen: (open: boolean) => void;
   safetyDistance: 70 | 100;
@@ -18,8 +15,6 @@ export const Map: React.FC<MapProps> = ({
   mapContainerRef,
   handleMapDrop,
   handleMapDragOver,
-  disclaimerOpen,
-  setDisclaimerOpen,
   helpOpen,
   setHelpOpen,
 }) => {
@@ -56,12 +51,6 @@ export const Map: React.FC<MapProps> = ({
           <path d="M12 17h.01" />
         </svg>
       </button>
-
-      {/* Disclaimer Dialog */}
-      <DisclaimerDialog
-        disclaimerOpen={disclaimerOpen}
-        setDisclaimerOpen={setDisclaimerOpen}
-      />
 
       {/* Help Dialog */}
       <HelpDialog helpOpen={helpOpen} setHelpOpen={setHelpOpen} />
