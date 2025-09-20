@@ -1,24 +1,22 @@
 "use client";
 
 import { HelpDialog } from "./dialogs/help-dialog";
-import type { SafetyDistance } from "@/lib/types";
+import { useMapContext, useUIContext } from "@/lib/contexts";
+import { useMapInitialization } from "@/lib/hooks";
 
 interface MapProps {
-  mapContainerRef: React.RefObject<HTMLDivElement | null>;
+  // Only essential props that can't be provided via context
   handleMapDrop: (e: React.DragEvent<HTMLDivElement>) => void;
   handleMapDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
-  helpOpen: boolean;
-  setHelpOpen: (open: boolean) => void;
-  safetyDistance: SafetyDistance;
 }
 
 export const Map: React.FC<MapProps> = ({
-  mapContainerRef,
   handleMapDrop,
   handleMapDragOver,
-  helpOpen,
-  setHelpOpen,
 }) => {
+  // Get context values
+  const { mapContainerRef } = useMapContext();
+  const { helpOpen, setHelpOpen } = useUIContext();
   return (
     <>
       <div className="flex-1">

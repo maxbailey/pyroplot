@@ -2472,12 +2472,8 @@ export function MapShell() {
         removeExtrusionForAnnotation={removeExtrusionForAnnotation}
       />
       <Map
-        mapContainerRef={mapContainerRef}
         handleMapDrop={handleMapDrop}
         handleMapDragOver={handleMapDragOver}
-        helpOpen={helpOpen}
-        setHelpOpen={setHelpOpen}
-        safetyDistance={safetyDistance}
       />
     </div>
   );
