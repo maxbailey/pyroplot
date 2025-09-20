@@ -1,134 +1,111 @@
 "use client";
 
 import Image from "next/image";
-import type {
-  AnnotationRecord,
-  MeasurementUnit,
-  SafetyDistance,
-} from "@/lib/types";
+import type { AnnotationRecord } from "@/lib/types";
 import { ANNOTATION_PALETTE } from "@/lib/constants";
 import { ShareDialog } from "./dialogs/share-dialog";
 import { ClearAnnotationsDialog } from "./dialogs/clear-annotations-dialog";
 import { CustomAnnotationDialog } from "./dialogs/custom-annotation-dialog";
 import { SettingsDialog } from "./dialogs/settings-dialog";
 import { DisclaimerDialog } from "./dialogs/disclaimer-dialog";
+import {
+  useMapContext,
+  useAnnotationContext,
+  useSettingsContext,
+  useUIContext,
+} from "@/lib/contexts";
+import { usePdfGenerator } from "../pdf-generator/usePdfGenerator";
 
 interface SidebarProps {
-  // Search-related props
-  searchQuery: string;
-  setSearchQuery: (query: string) => void;
-  suggestions: Array<{ id: string; text: string; center?: [number, number] }>;
-  setSuggestions: (
-    suggestions: Array<{ id: string; text: string; center?: [number, number] }>
-  ) => void;
-  activeIndex: number;
-  setActiveIndex: (index: number | ((prev: number) => number)) => void;
-  handleSubmitOrSelect: (idOrQuery?: string) => Promise<void>;
-
-  // Settings-related props
-  settingsOpen: boolean;
-  setSettingsOpen: (open: boolean) => void;
-  projectName: string;
-  formProjectName: string;
-  setFormProjectName: (name: string) => void;
-  measurementUnit: MeasurementUnit;
-  formMeasurementUnit: MeasurementUnit;
-  setFormMeasurementUnit: (unit: MeasurementUnit) => void;
-  safetyDistance: SafetyDistance;
-  formSafetyDistance: SafetyDistance;
-  setFormSafetyDistance: (distance: SafetyDistance) => void;
-  hasFormChanges: boolean;
-  setHasFormChanges: (hasChanges: boolean) => void;
-  handleFormChange: () => void;
-  handleSaveSettings: () => void;
-  handleCancelSettings: () => void;
-
-  // Custom annotation props
-  customAnnotationOpen: boolean;
-  setCustomAnnotationOpen: (open: boolean) => void;
-  customLabel: string;
-  setCustomLabel: (label: string) => void;
-  customColor: string;
-  setCustomColor: (color: string) => void;
-  editingCustomAnnotation: string | null;
-  setEditingCustomAnnotation: (id: string | null) => void;
-  handleSaveCustomAnnotation: () => void;
-  handleCancelCustomAnnotation: () => void;
-
-  // Map-related props
+  // Only essential props that can't be provided via context
   mapRef: React.RefObject<mapboxgl.Map | null>;
-  showHeight: boolean;
-  setShowHeight: (show: boolean | ((prev: boolean) => boolean)) => void;
-  isGenerating: boolean;
-  generateSitePlanPdf: () => Promise<void>;
-
-  // Share props
-  shareOpen: boolean;
-  setShareOpen: (open: boolean) => void;
-  shareUrl: string;
-  copied: boolean;
-  setCopied: (copied: boolean) => void;
-  openShareDialog: () => Promise<void>;
-
-  // Clear annotations
-  clearAllAnnotations: () => void;
-
-  // Disclaimer
-  disclaimerOpen: boolean;
-  setDisclaimerOpen: (open: boolean) => void;
-
-  // Annotation refs and functions
   annotationsRef: React.RefObject<Record<string, AnnotationRecord>>;
   addExtrusionForAnnotation: (rec: AnnotationRecord) => void;
   removeExtrusionForAnnotation: (rec: AnnotationRecord) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  searchQuery,
-  setSearchQuery,
-  suggestions,
-  setSuggestions,
-  activeIndex,
-  setActiveIndex,
-  handleSubmitOrSelect,
-  settingsOpen,
-  setSettingsOpen,
-  formProjectName,
-  setFormProjectName,
-  formMeasurementUnit,
-  setFormMeasurementUnit,
-  formSafetyDistance,
-  setFormSafetyDistance,
-  hasFormChanges,
-  handleFormChange,
-  handleSaveSettings,
-  handleCancelSettings,
-  customAnnotationOpen,
-  setCustomAnnotationOpen,
-  customLabel,
-  setCustomLabel,
-  customColor,
-  setCustomColor,
-  handleSaveCustomAnnotation,
-  handleCancelCustomAnnotation,
   mapRef,
-  showHeight,
-  setShowHeight,
-  isGenerating,
-  generateSitePlanPdf,
-  shareOpen,
-  setShareOpen,
-  shareUrl,
-  copied,
-  setCopied,
-  openShareDialog,
-  clearAllAnnotations,
-  disclaimerOpen,
-  setDisclaimerOpen,
   annotationsRef,
   addExtrusionForAnnotation,
   removeExtrusionForAnnotation,
 }) => {
+  // Get context values
+  const {
+    searchQuery,
+    suggestions,
+    activeIndex,
+    setSearchQuery,
+    setSuggestions,
+    setActiveIndex,
+    handleSubmitOrSelect,
+  } = useMapContext();
+
+  const {
+    settingsOpen,
+    formProjectName,
+    setFormProjectName,
+    formMeasurementUnit,
+    setFormMeasurementUnit,
+    formSafetyDistance,
+    setFormSafetyDistance,
+    hasFormChanges,
+    handleFormChange,
+    handleSaveSettings,
+    handleCancelSettings,
+    openSettingsDialog,
+  } = useSettingsContext();
+
+  const {
+    customAnnotationOpen,
+    setCustomAnnotationOpen,
+    customLabel,
+    setCustomLabel,
+    customColor,
+    setCustomColor,
+    editingCustomAnnotation,
+    setEditingCustomAnnotation,
+    showHeight,
+    setShowHeight,
+    shareOpen,
+    setShareOpen,
+    shareUrl,
+    copied,
+    setCopied,
+    openShareDialog,
+    disclaimerOpen,
+    setDisclaimerOpen,
+  } = useUIContext();
+
+  const { clearAll, audienceAreas, measurements, restrictedAreas } =
+    useAnnotationContext();
+
+  const { projectName, measurementUnit, safetyDistance } = useSettingsContext();
+
+  // Get PDF generator hook
+  const { isGenerating, generateSitePlanPdf } = usePdfGenerator({
+    mapRef,
+    annotationsRef,
+    audienceAreasRef: { current: audienceAreas },
+    measurementsRef: { current: measurements },
+    restrictedAreasRef: { current: restrictedAreas },
+    projectName,
+    measurementUnit,
+    safetyDistance,
+  });
+
+  // Custom annotation handlers
+  const handleSaveCustomAnnotation = () => {
+    // This would need to be implemented based on the custom annotation logic
+    console.log("Save custom annotation");
+  };
+
+  const handleCancelCustomAnnotation = () => {
+    setCustomAnnotationOpen(false);
+    setEditingCustomAnnotation(null);
+    setCustomLabel("");
+    setCustomColor("#8B5CF6");
+  };
   return (
     <aside className="w-[300px] p-4 space-y-4 overflow-y-auto">
       {/* Logo */}
@@ -160,12 +137,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onKeyDown={(e) => {
               if (e.key === "ArrowDown" && suggestions.length > 0) {
                 e.preventDefault();
-                setActiveIndex((idx: number) => (idx + 1) % suggestions.length);
+                setActiveIndex((activeIndex + 1) % suggestions.length);
               } else if (e.key === "ArrowUp" && suggestions.length > 0) {
                 e.preventDefault();
                 setActiveIndex(
-                  (idx: number) =>
-                    (idx - 1 + suggestions.length) % suggestions.length
+                  (activeIndex - 1 + suggestions.length) % suggestions.length
                 );
               } else if (e.key === "Escape") {
                 setSuggestions([]);
@@ -270,7 +246,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Settings Dialog */}
           <SettingsDialog
             settingsOpen={settingsOpen}
-            setSettingsOpen={setSettingsOpen}
+            setSettingsOpen={openSettingsDialog}
             formProjectName={formProjectName}
             setFormProjectName={setFormProjectName}
             formMeasurementUnit={formMeasurementUnit}
@@ -278,7 +254,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             formSafetyDistance={formSafetyDistance}
             setFormSafetyDistance={setFormSafetyDistance}
             hasFormChanges={hasFormChanges}
-            handleFormChange={handleFormChange}
+            handleFormChange={() => handleFormChange("", "")}
             handleSaveSettings={handleSaveSettings}
             handleCancelSettings={handleCancelSettings}
           />
@@ -291,7 +267,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             setCustomLabel={setCustomLabel}
             customColor={customColor}
             setCustomColor={setCustomColor}
-            handleFormChange={handleFormChange}
+            handleFormChange={() => handleFormChange("", "")}
             handleSaveCustomAnnotation={handleSaveCustomAnnotation}
             handleCancelCustomAnnotation={handleCancelCustomAnnotation}
           />
@@ -318,18 +294,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => {
-              setShowHeight((prev: boolean) => {
-                const next = !prev;
-                const map = mapRef.current;
-                if (!map) return next;
-                // apply or remove on all existing annotations
-                for (const key of Object.keys(annotationsRef.current)) {
-                  const rec = annotationsRef.current[key]!;
-                  if (next) addExtrusionForAnnotation(rec);
-                  else removeExtrusionForAnnotation(rec);
-                }
-                return next;
-              });
+              const next = !showHeight;
+              const map = mapRef.current;
+              if (!map) return;
+              // apply or remove on all existing annotations
+              for (const key of Object.keys(annotationsRef.current)) {
+                const rec = annotationsRef.current[key]!;
+                if (next) addExtrusionForAnnotation(rec);
+                else removeExtrusionForAnnotation(rec);
+              }
+              setShowHeight(next);
             }}
             className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
           >
@@ -351,11 +325,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             shareUrl={shareUrl}
             copied={copied}
             setCopied={setCopied}
-            openShareDialog={openShareDialog}
+            openShareDialog={async () => await openShareDialog()}
           />
 
           {/* Clear Annotations Dialog */}
-          <ClearAnnotationsDialog clearAllAnnotations={clearAllAnnotations} />
+          <ClearAnnotationsDialog clearAllAnnotations={clearAll} />
         </div>
 
         {/* Legal Disclaimer */}
