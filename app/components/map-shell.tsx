@@ -1,81 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import mapboxgl from "mapbox-gl";
 import { Sidebar, Map } from "@/components/map-shell";
 import { usePdfGenerator } from "@/components/pdf-generator";
 import { feetToMeters, metersToFeet } from "@/components/pdf-generator/utils";
-// Removed slider; we switch whole styles for performance
+import type {
+  AnnotationItem,
+  AnnotationRecord,
+  AudienceRecord,
+  MeasurementRecord,
+  RestrictedRecord,
+  MeasurementUnit,
+  SafetyDistance,
+  SerializedState,
+  SerializedFirework,
+  SerializedCustom,
+  SerializedAudience,
+  SerializedMeasurement,
+  SerializedRestricted,
+} from "@/lib/types";
+import {
+  ANNOTATION_PALETTE,
+  MAP_CONFIG,
+  MAPBOX_ENDPOINTS,
+  GEO_CONSTANTS,
+  AUDIENCE_DIMENSIONS,
+  MAP_INTERACTION,
+} from "@/lib/constants";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
-
-type AnnotationItem = {
-  key: string;
-  label: string;
-  inches: number;
-  color: string;
-};
-
-type AnnotationType =
-  | "firework"
-  | "audience"
-  | "measurement"
-  | "restricted"
-  | "custom";
-
-export interface AnnotationRecord {
-  type: AnnotationType;
-  number: number;
-  id: string;
-  inches: number;
-  label: string;
-  color: string;
-  marker: mapboxgl.Marker;
-  sourceId: string;
-  fillLayerId: string;
-  lineLayerId: string;
-  extrusionLayerId?: string;
-  // Custom annotation fields
-  emoji?: string;
-  description?: string;
-  textSourceId?: string;
-}
-
-interface AudienceRecord {
-  type: AnnotationType;
-  number: number;
-  id: string;
-  sourceId: string;
-  fillLayerId: string;
-  lineLayerId: string;
-  labelMarker: mapboxgl.Marker;
-  cornerMarkers: mapboxgl.Marker[];
-  corners: [number, number][];
-}
-
-interface MeasurementRecord {
-  type: AnnotationType;
-  number: number;
-  id: string;
-  sourceId: string;
-  lineLayerId: string;
-  labelMarker: mapboxgl.Marker;
-  pointMarkers: mapboxgl.Marker[];
-  points: [number, number][];
-}
-
-interface RestrictedRecord {
-  type: AnnotationType;
-  number: number;
-  id: string;
-  sourceId: string;
-  fillLayerId: string;
-  lineLayerId: string;
-  labelMarker: mapboxgl.Marker;
-  cornerMarkers: mapboxgl.Marker[];
-  corners: [number, number][];
-}
 
 export function MapShell() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -109,11 +64,10 @@ export function MapShell() {
   const [editingCustomAnnotation, setEditingCustomAnnotation] = useState<
     string | null
   >(null);
-  type MeasurementUnit = "feet" | "meters";
   const [measurementUnit, setMeasurementUnit] =
     useState<MeasurementUnit>("feet");
-  const [safetyDistance, setSafetyDistance] = useState<70 | 100>(70);
-  const safetyDistanceRef = useRef<70 | 100>(70);
+  const [safetyDistance, setSafetyDistance] = useState<SafetyDistance>(70);
+  const safetyDistanceRef = useRef<SafetyDistance>(70);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -242,7 +196,7 @@ export function MapShell() {
           const newMarker = new mapboxgl.Marker({
             color: customColor,
             draggable: true,
-            clickTolerance: 5,
+            clickTolerance: MAP_INTERACTION.CLICK_TOLERANCE,
           })
             .setLngLat(position)
             .addTo(map);
@@ -374,7 +328,7 @@ export function MapShell() {
           Math.sin(deltaLng / 2) *
           Math.sin(deltaLng / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const distanceMeters = 6371000 * c;
+      const distanceMeters = GEO_CONSTANTS.EARTH_RADIUS * c;
       const el = rec.labelMarker.getElement();
       let distanceDiv = el.querySelector(
         '[data-role="distance"]'
@@ -395,9 +349,10 @@ export function MapShell() {
       const centerLat = (c[0][1] + c[2][1]) / 2;
       const metersW =
         Math.abs(c[1][0] - c[0][0]) *
-        111320 *
+        GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
         Math.cos((centerLat * Math.PI) / 180);
-      const metersH = Math.abs(c[3][1] - c[0][1]) * 110540;
+      const metersH =
+        Math.abs(c[3][1] - c[0][1]) * GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
       const root = rec.labelMarker.getElement();
       let div = root.querySelector(
         '[data-role="dims"]'
@@ -418,9 +373,10 @@ export function MapShell() {
       const centerLat = (c[0][1] + c[2][1]) / 2;
       const metersW =
         Math.abs(c[1][0] - c[0][0]) *
-        111320 *
+        GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
         Math.cos((centerLat * Math.PI) / 180);
-      const metersH = Math.abs(c[3][1] - c[0][1]) * 110540;
+      const metersH =
+        Math.abs(c[3][1] - c[0][1]) * GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
       const root = rec.labelMarker.getElement();
       let div = root.querySelector(
         '[data-role="dims"]'
@@ -473,46 +429,16 @@ export function MapShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measurementUnit, safetyDistance, isMapReady]);
 
-  const annotationPalette = useMemo<AnnotationItem[]>(
-    () => [
-      { key: "bore-1", label: '1" Bore', inches: 1, color: "#FF5126" },
-      { key: "bore-1-2", label: '1.2" Bore', inches: 1.2, color: "#FF5126" },
-      { key: "bore-1-5", label: '1.5" Bore', inches: 1.5, color: "#FF5126" },
-      {
-        key: "shell-1-75",
-        label: '1.75" Shells',
-        inches: 1.75,
-        color: "#FF5126",
-      },
-      { key: "shell-2", label: '2" Shells', inches: 2, color: "#FF5126" },
-      { key: "shell-2-5", label: '2.5" Shells', inches: 2.5, color: "#FF5126" },
-      { key: "shell-3", label: '3" Shells', inches: 3, color: "#FF5126" },
-      { key: "shell-4", label: '4" Shells', inches: 4, color: "#FF5126" },
-      { key: "shell-5", label: '5" Shells', inches: 5, color: "#FF5126" },
-      { key: "shell-6", label: '6" Shells', inches: 6, color: "#FF5126" },
-      { key: "shell-7", label: '7" Shells', inches: 7, color: "#FF5126" },
-      { key: "shell-8", label: '8" Shells', inches: 8, color: "#FF5126" },
-      { key: "shell-10", label: '10" Shells', inches: 10, color: "#FF5126" },
-      { key: "shell-12", label: '12" Shells', inches: 12, color: "#FF5126" },
-      { key: "shell-16", label: '16" Shells', inches: 16, color: "#FF5126" },
-      { key: "audience", label: "Audience", inches: 0, color: "#0077FF" },
-      { key: "measurement", label: "Measurement", inches: 0, color: "#00AA00" },
-      { key: "restricted", label: "Restricted", inches: 0, color: "#FF0000" },
-      { key: "custom", label: "Custom", inches: 0, color: "#FF5126" },
-    ],
-    []
-  );
-
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: "mapbox://styles/mapbox/satellite-streets-v12",
-      center: [-98.5795, 39.8283],
-      zoom: 3,
-      pitch: 20,
-      bearing: 0,
+      style: MAP_CONFIG.DEFAULT_STYLE,
+      center: MAP_CONFIG.DEFAULT_CENTER,
+      zoom: MAP_CONFIG.DEFAULT_ZOOM,
+      pitch: MAP_CONFIG.DEFAULT_PITCH,
+      bearing: MAP_CONFIG.DEFAULT_BEARING,
       antialias: true,
       preserveDrawingBuffer: true,
       attributionControl: false,
@@ -583,9 +509,7 @@ export function MapShell() {
     }
 
     const run = async () => {
-      const sbUrl = new URL(
-        "https://api.mapbox.com/search/searchbox/v1/suggest"
-      );
+      const sbUrl = new URL(MAPBOX_ENDPOINTS.SEARCH_SUGGEST);
       sbUrl.searchParams.set("q", query);
       sbUrl.searchParams.set("language", "en");
       sbUrl.searchParams.set("limit", "5");
@@ -614,9 +538,7 @@ export function MapShell() {
       } catch {}
 
       const geoUrl = new URL(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
-          query
-        )}.json`
+        `${MAPBOX_ENDPOINTS.GEOCODING}/${encodeURIComponent(query)}.json`
       );
       geoUrl.searchParams.set("autocomplete", "true");
       geoUrl.searchParams.set("language", "en");
@@ -648,7 +570,7 @@ export function MapShell() {
       } catch {}
     };
 
-    const id = setTimeout(() => void run(), 200);
+    const id = setTimeout(() => void run(), MAP_INTERACTION.SEARCH_DEBOUNCE_MS);
     return () => {
       controller.abort();
       clearTimeout(id);
@@ -668,7 +590,10 @@ export function MapShell() {
       if (!fromSuggestion.center && sessionTokenRef.current) {
         try {
           const rUrl = new URL(
-            `https://api.mapbox.com/search/searchbox/v1/retrieve/${fromSuggestion.id}`
+            `${MAPBOX_ENDPOINTS.SEARCH_SUGGEST.replace(
+              "/suggest",
+              ""
+            )}/retrieve/${fromSuggestion.id}`
           );
           rUrl.searchParams.set("session_token", sessionTokenRef.current);
           rUrl.searchParams.set("access_token", token);
@@ -691,9 +616,7 @@ export function MapShell() {
 
     if (!lngLat) {
       const url = new URL(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
-          query
-        )}.json`
+        `${MAPBOX_ENDPOINTS.GEOCODING}/${encodeURIComponent(query)}.json`
       );
       url.searchParams.set("access_token", token);
       url.searchParams.set("limit", "1");
@@ -726,61 +649,6 @@ export function MapShell() {
   }
 
   // --- Share/Load helpers ---
-  interface SerializedFirework {
-    id: string;
-    number: number;
-    inches: number;
-    label: string;
-    color: string;
-    position: [number, number]; // [lng, lat]
-  }
-
-  interface SerializedCustom {
-    id: string;
-    number: number;
-    label: string;
-    color: string;
-    position: [number, number]; // [lng, lat]
-    emoji?: string;
-    description?: string;
-  }
-
-  interface SerializedAudience {
-    id: string;
-    number: number;
-    corners: [number, number][]; // 4 corners [lng, lat]
-  }
-
-  interface SerializedMeasurement {
-    id: string;
-    number: number;
-    points: [number, number][]; // 2 points [lng, lat]
-  }
-
-  interface SerializedRestricted {
-    id: string;
-    number: number;
-    corners: [number, number][]; // 4 corners [lng, lat]
-  }
-
-  interface SerializedState {
-    camera: {
-      center: [number, number];
-      zoom: number;
-      bearing: number;
-      pitch: number;
-    };
-    fireworks: SerializedFirework[];
-    custom: SerializedCustom[];
-    audiences: SerializedAudience[];
-    measurements: SerializedMeasurement[];
-    restricted: SerializedRestricted[];
-    showHeight: boolean;
-    measurementUnit?: "feet" | "meters";
-    projectName?: string;
-    safetyDistance?: 70 | 100;
-    v: 1;
-  }
 
   function base64UrlEncode(bytes: Uint8Array) {
     let binary = "";
@@ -984,7 +852,7 @@ export function MapShell() {
     // Restore fireworks
     let maxFireworkNum = 0;
     for (const fw of state.fireworks) {
-      const item: AnnotationItem | undefined = annotationPalette.find(
+      const item: AnnotationItem | undefined = ANNOTATION_PALETTE.find(
         (i) => i.inches === fw.inches && i.key !== "audience"
       );
       const color = fw.color || item?.color || "#FF5126";
@@ -1258,7 +1126,7 @@ export function MapShell() {
       const centerLat = (corners[0][1] + corners[2][1]) / 2;
       const metersW =
         Math.abs(corners[1][0] - corners[0][0]) *
-        111320 *
+        GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
         Math.cos((centerLat * Math.PI) / 180);
       const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
       dims.textContent = `${formatLengthNoSpace(
@@ -1296,7 +1164,7 @@ export function MapShell() {
         const centerLatNow = (moved[0][1] + moved[2][1]) / 2;
         const metersWNow =
           Math.abs(moved[1][0] - moved[0][0]) *
-          111320 *
+          GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
           Math.cos((centerLatNow * Math.PI) / 180);
         const metersHNow = Math.abs(moved[3][1] - moved[0][1]) * 110540;
         dims.textContent = `${formatLengthNoSpace(
@@ -1311,11 +1179,13 @@ export function MapShell() {
           const oppIdx = (idx + 2) % 4;
           const anchorLng = corners[oppIdx][0];
           const anchorLat = corners[oppIdx][1];
-          const minFt = 20;
+          const minFt = MAP_INTERACTION.MIN_RECTANGLE_SIZE_FT;
           const minLngDelta =
             feetToMeters(minFt) /
-            (111320 * Math.cos((anchorLat * Math.PI) / 180));
-          const minLatDelta = feetToMeters(minFt) / 110540;
+            (GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
+              Math.cos((anchorLat * Math.PI) / 180));
+          const minLatDelta =
+            feetToMeters(minFt) / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           const sLng = idx === 0 || idx === 3 ? -1 : 1;
           const sLat = idx === 0 || idx === 1 ? -1 : 1;
           let dragLng = cur.lng;
@@ -1344,7 +1214,7 @@ export function MapShell() {
           labelMarker.setLngLat([newCenterLng, newCenterLat]);
           const metersW2 =
             Math.abs(corners[1][0] - corners[0][0]) *
-            111320 *
+            GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
             Math.cos((newCenterLat * Math.PI) / 180);
           const metersH2 = Math.abs(corners[3][1] - corners[0][1]) * 110540;
           dims.textContent = `${formatLengthNoSpace(
@@ -1441,7 +1311,7 @@ export function MapShell() {
           Math.sin(deltaLng / 2) *
           Math.sin(deltaLng / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const distanceMeters = 6371000 * c; // Earth radius in meters
+      const distanceMeters = GEO_CONSTANTS.EARTH_RADIUS * c; // Earth radius in meters
       distance.textContent = formatDistanceWithSpace(distanceMeters);
 
       label.appendChild(title);
@@ -1510,7 +1380,7 @@ export function MapShell() {
               Math.sin(deltaLng / 2) *
               Math.sin(deltaLng / 2);
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const distanceMeters = 6371000 * c; // Earth radius in meters
+          const distanceMeters = GEO_CONSTANTS.EARTH_RADIUS * c; // Earth radius in meters
           distance.textContent = formatDistanceWithSpace(distanceMeters);
 
           // Update points reference
@@ -1584,7 +1454,7 @@ export function MapShell() {
       const centerLat = (corners[0][1] + corners[2][1]) / 2;
       const metersW =
         Math.abs(corners[1][0] - corners[0][0]) *
-        111320 *
+        GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
         Math.cos((centerLat * Math.PI) / 180);
       const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
       dims.textContent = `${formatLengthNoSpace(
@@ -1622,7 +1492,7 @@ export function MapShell() {
         const centerLatNow = (moved[0][1] + moved[2][1]) / 2;
         const metersWNow =
           Math.abs(moved[1][0] - moved[0][0]) *
-          111320 *
+          GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
           Math.cos((centerLatNow * Math.PI) / 180);
         const metersHNow = Math.abs(moved[3][1] - moved[0][1]) * 110540;
         dims.textContent = `${formatLengthNoSpace(
@@ -1637,11 +1507,13 @@ export function MapShell() {
           const oppIdx = (idx + 2) % 4;
           const anchorLng = corners[oppIdx][0];
           const anchorLat = corners[oppIdx][1];
-          const minFt = 20;
+          const minFt = MAP_INTERACTION.MIN_RECTANGLE_SIZE_FT;
           const minLngDelta =
             feetToMeters(minFt) /
-            (111320 * Math.cos((anchorLat * Math.PI) / 180));
-          const minLatDelta = feetToMeters(minFt) / 110540;
+            (GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
+              Math.cos((anchorLat * Math.PI) / 180));
+          const minLatDelta =
+            feetToMeters(minFt) / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           const sLng = idx === 0 || idx === 3 ? -1 : 1;
           const sLat = idx === 0 || idx === 1 ? -1 : 1;
           let dragLng = cur.lng;
@@ -1670,7 +1542,7 @@ export function MapShell() {
           labelMarker.setLngLat([newCenterLng, newCenterLat]);
           const metersW2 =
             Math.abs(corners[1][0] - corners[0][0]) *
-            111320 *
+            GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
             Math.cos((newCenterLat * Math.PI) / 180);
           const metersH2 = Math.abs(corners[3][1] - corners[0][1]) * 110540;
           dims.textContent = `${formatLengthNoSpace(
@@ -1949,7 +1821,7 @@ export function MapShell() {
       return;
     }
     if (!parsed) return;
-    const item = annotationPalette.find((i) => i.key === parsed!.key);
+    const item = ANNOTATION_PALETTE.find((i) => i.key === parsed!.key);
     if (!item) return;
     const rect = (e.target as HTMLDivElement).getBoundingClientRect();
     const point = [e.clientX - rect.left, e.clientY - rect.top] as [
@@ -1959,13 +1831,15 @@ export function MapShell() {
     const lngLat = mapRef.current.unproject(point);
     if (item.key === "audience") {
       // Create audience rectangle default ~ 100ft x 60ft
-      const widthFt = 200;
-      const heightFt = 90;
+      const widthFt = AUDIENCE_DIMENSIONS.DEFAULT_WIDTH_FT;
+      const heightFt = AUDIENCE_DIMENSIONS.DEFAULT_HEIGHT_FT;
       const metersW = feetToMeters(widthFt);
       const metersH = feetToMeters(heightFt);
       const metersToLng = (m: number, lat: number) =>
-        m / (111320 * Math.cos((lat * Math.PI) / 180));
-      const metersToLat = (m: number) => m / 110540;
+        m /
+        (GEO_CONSTANTS.METERS_PER_DEGREE_LNG * Math.cos((lat * Math.PI) / 180));
+      const metersToLat = (m: number) =>
+        m / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
       const lngW = metersToLng(metersW, lngLat.lat);
       const latH = metersToLat(metersH);
       let corners: [number, number][] = [
@@ -2018,9 +1892,10 @@ export function MapShell() {
       label.appendChild(title);
       label.appendChild(dims);
       // Position label at top middle, 20ft off the top
-      const offsetFt = 20; // 20 feet off the top
+      const offsetFt = AUDIENCE_DIMENSIONS.LABEL_OFFSET_FT; // 20 feet off the top
       const centerLng = (corners[0][0] + corners[2][0]) / 2; // Center longitude
-      const offsetLat = feetToMeters(offsetFt) / 110540;
+      const offsetLat =
+        feetToMeters(offsetFt) / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
       const topMiddleLng = centerLng; // Center longitude
       const topMiddleLat = corners[3][1] - offsetLat; // Top edge - 20ft offset
       const labelMarker = new mapboxgl.Marker({
@@ -2033,7 +1908,8 @@ export function MapShell() {
       const onLabelDrag = () => {
         const cur = labelMarker.getLngLat();
         const centerLng = (corners[0][0] + corners[2][0]) / 2; // Center longitude
-        const offsetLat = feetToMeters(20) / 110540;
+        const offsetLat =
+          feetToMeters(20) / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         const dLng = cur.lng - centerLng; // Use center longitude as reference
         const dLat = cur.lat - (corners[3][1] - offsetLat); // Use top-middle as reference
         const movedCorners: [number, number][] = corners.map(([lng, lat]) => [
@@ -2058,7 +1934,7 @@ export function MapShell() {
         const centerLatNow = (movedCorners[0][1] + movedCorners[2][1]) / 2;
         const metersWNow =
           Math.abs(movedCorners[1][0] - movedCorners[0][0]) *
-          111320 *
+          GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
           Math.cos((centerLatNow * Math.PI) / 180);
         const metersHNow =
           Math.abs(movedCorners[3][1] - movedCorners[0][1]) * 110540;
@@ -2078,11 +1954,13 @@ export function MapShell() {
           const oppIdx = (idx + 2) % 4;
           const anchorLng = corners[oppIdx][0];
           const anchorLat = corners[oppIdx][1];
-          const minFt = 20;
+          const minFt = MAP_INTERACTION.MIN_RECTANGLE_SIZE_FT;
           const minLngDelta =
             feetToMeters(minFt) /
-            (111320 * Math.cos((anchorLat * Math.PI) / 180));
-          const minLatDelta = feetToMeters(minFt) / 110540;
+            (GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
+              Math.cos((anchorLat * Math.PI) / 180));
+          const minLatDelta =
+            feetToMeters(minFt) / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           const sLng = idx === 0 || idx === 3 ? -1 : 1;
           const sLat = idx === 0 || idx === 1 ? -1 : 1;
           let dragLng = cur.lng;
@@ -2112,14 +1990,15 @@ export function MapShell() {
           } as FeatureCollection);
           // update label position to top middle, 20ft off the top
           const centerLng = (corners[0][0] + corners[2][0]) / 2; // Center longitude
-          const offsetLat = feetToMeters(20) / 110540;
+          const offsetLat =
+            feetToMeters(20) / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           const newTopMiddleLng = centerLng; // Center longitude
           const newTopMiddleLat = corners[3][1] - offsetLat; // Top edge - 20ft offset
           labelMarker.setLngLat([newTopMiddleLng, newTopMiddleLat]);
           // update dims text
           const metersW =
             Math.abs(corners[1][0] - corners[0][0]) *
-            111320 *
+            GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
             Math.cos((newTopMiddleLat * Math.PI) / 180);
           const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
           dims.textContent = `${formatLengthNoSpace(
@@ -2151,7 +2030,8 @@ export function MapShell() {
       // Create measurement with two points 150ft apart, north/south vertical
       const distanceFt = 150;
       const distanceMeters = feetToMeters(distanceFt);
-      const metersToLat = (m: number) => m / 110540;
+      const metersToLat = (m: number) =>
+        m / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
       const latOffset = metersToLat(distanceMeters);
 
       const points: [number, number][] = [
@@ -2281,7 +2161,7 @@ export function MapShell() {
               Math.sin(deltaLng / 2) *
               Math.sin(deltaLng / 2);
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const distanceMeters = 6371000 * c; // Earth radius in meters
+          const distanceMeters = GEO_CONSTANTS.EARTH_RADIUS * c; // Earth radius in meters
           distance.textContent = formatDistanceWithSpace(distanceMeters);
 
           // Update points reference
@@ -2356,13 +2236,15 @@ export function MapShell() {
 
     if (item.key === "restricted") {
       // Create restricted rectangle default ~ 100ft x 60ft
-      const widthFt = 200;
-      const heightFt = 90;
+      const widthFt = AUDIENCE_DIMENSIONS.DEFAULT_WIDTH_FT;
+      const heightFt = AUDIENCE_DIMENSIONS.DEFAULT_HEIGHT_FT;
       const metersW = feetToMeters(widthFt);
       const metersH = feetToMeters(heightFt);
       const metersToLng = (m: number, lat: number) =>
-        m / (111320 * Math.cos((lat * Math.PI) / 180));
-      const metersToLat = (m: number) => m / 110540;
+        m /
+        (GEO_CONSTANTS.METERS_PER_DEGREE_LNG * Math.cos((lat * Math.PI) / 180));
+      const metersToLat = (m: number) =>
+        m / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
       const lngW = metersToLng(metersW, lngLat.lat);
       const latH = metersToLat(metersH);
       let corners: [number, number][] = [
@@ -2414,9 +2296,10 @@ export function MapShell() {
       label.appendChild(title);
       label.appendChild(dims);
       // Position label at top middle, 20ft off the top
-      const offsetFt = 20; // 20 feet off the top
+      const offsetFt = AUDIENCE_DIMENSIONS.LABEL_OFFSET_FT; // 20 feet off the top
       const centerLng = (corners[0][0] + corners[2][0]) / 2; // Center longitude
-      const offsetLat = feetToMeters(offsetFt) / 110540;
+      const offsetLat =
+        feetToMeters(offsetFt) / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
       const topMiddleLng = centerLng; // Center longitude
       const topMiddleLat = corners[3][1] - offsetLat; // Top edge - 20ft offset
       const labelMarker = new mapboxgl.Marker({
@@ -2429,7 +2312,8 @@ export function MapShell() {
       const onLabelDrag = () => {
         const cur = labelMarker.getLngLat();
         const centerLng = (corners[0][0] + corners[2][0]) / 2; // Center longitude
-        const offsetLat = feetToMeters(20) / 110540;
+        const offsetLat =
+          feetToMeters(20) / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         const dLng = cur.lng - centerLng; // Use center longitude as reference
         const dLat = cur.lat - (corners[3][1] - offsetLat); // Use top-middle as reference
         const movedCorners: [number, number][] = corners.map(([lng, lat]) => [
@@ -2454,7 +2338,7 @@ export function MapShell() {
         const centerLatNow = (movedCorners[0][1] + movedCorners[2][1]) / 2;
         const metersWNow =
           Math.abs(movedCorners[1][0] - movedCorners[0][0]) *
-          111320 *
+          GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
           Math.cos((centerLatNow * Math.PI) / 180);
         const metersHNow =
           Math.abs(movedCorners[3][1] - movedCorners[0][1]) * 110540;
@@ -2474,11 +2358,13 @@ export function MapShell() {
           const oppIdx = (idx + 2) % 4;
           const anchorLng = corners[oppIdx][0];
           const anchorLat = corners[oppIdx][1];
-          const minFt = 20;
+          const minFt = MAP_INTERACTION.MIN_RECTANGLE_SIZE_FT;
           const minLngDelta =
             feetToMeters(minFt) /
-            (111320 * Math.cos((anchorLat * Math.PI) / 180));
-          const minLatDelta = feetToMeters(minFt) / 110540;
+            (GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
+              Math.cos((anchorLat * Math.PI) / 180));
+          const minLatDelta =
+            feetToMeters(minFt) / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           const sLng = idx === 0 || idx === 3 ? -1 : 1;
           const sLat = idx === 0 || idx === 1 ? -1 : 1;
           let dragLng = cur.lng;
@@ -2508,14 +2394,15 @@ export function MapShell() {
           } as FeatureCollection);
           // update label position to top middle, 20ft off the top
           const centerLng = (corners[0][0] + corners[2][0]) / 2; // Center longitude
-          const offsetLat = feetToMeters(20) / 110540;
+          const offsetLat =
+            feetToMeters(20) / GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           const newTopMiddleLng = centerLng; // Center longitude
           const newTopMiddleLat = corners[3][1] - offsetLat; // Top edge - 20ft offset
           labelMarker.setLngLat([newTopMiddleLng, newTopMiddleLat]);
           // update dims text
           const metersW =
             Math.abs(corners[1][0] - corners[0][0]) *
-            111320 *
+            GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
             Math.cos((newTopMiddleLat * Math.PI) / 180);
           const metersH = Math.abs(corners[3][1] - corners[0][1]) * 110540;
           dims.textContent = `${formatLengthNoSpace(
