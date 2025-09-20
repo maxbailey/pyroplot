@@ -19,6 +19,14 @@ export const metadata: Metadata = {
   description:
     "Visualize fireworks display layouts, map launch points, and estimate fallout zones to plan safe and organized shows.",
   themeColor: "#000000",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.png", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({
