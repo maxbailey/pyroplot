@@ -11,28 +11,23 @@ import type {
 // Map initialization hook
 export const useMapInitialization = () => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const { setMapRef, setMapReady, setCamera, isMapReady } = useMapStore();
+  const {
+    mapRef,
+    isMapReady,
+    setMapRef,
+    setMapReady,
+    setCamera,
+    setDragging,
+    setZooming,
+    initializeMap: storeInitializeMap,
+  } = useMapStore();
 
   const initializeMap = useCallback(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
+    if (!mapContainerRef.current || mapRef) return;
 
-    const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
-      style: MAP_CONFIG.DEFAULT_STYLE,
-      center: MAP_CONFIG.DEFAULT_CENTER,
-      zoom: MAP_CONFIG.DEFAULT_ZOOM,
-      pitch: MAP_CONFIG.DEFAULT_PITCH,
-      bearing: MAP_CONFIG.DEFAULT_BEARING,
-    });
+    const map = storeInitializeMap(mapContainerRef.current);
 
-    mapRef.current = map;
-    setMapRef({ current: map });
-
-    map.on("load", () => {
-      setMapReady(true);
-    });
-
+    // Set up event listeners
     map.on("moveend", () => {
       if (map.isMoving()) return;
       setCamera({
@@ -44,30 +39,36 @@ export const useMapInitialization = () => {
     });
 
     map.on("dragstart", () => {
-      useMapStore.getState().setDragging(true);
+      setDragging(true);
     });
 
     map.on("dragend", () => {
-      useMapStore.getState().setDragging(false);
+      setDragging(false);
     });
 
     map.on("zoomstart", () => {
-      useMapStore.getState().setZooming(true);
+      setZooming(true);
     });
 
     map.on("zoomend", () => {
-      useMapStore.getState().setZooming(false);
+      setZooming(false);
     });
-  }, [setMapRef, setMapReady, setCamera]);
+  }, [
+    mapRef,
+    storeInitializeMap,
+    setMapRef,
+    setCamera,
+    setDragging,
+    setZooming,
+  ]);
 
   const cleanup = useCallback(() => {
-    if (mapRef.current) {
-      mapRef.current.remove();
-      mapRef.current = null;
-      setMapRef({ current: null });
+    if (mapRef) {
+      mapRef.remove();
+      setMapRef(null);
       setMapReady(false);
     }
-  }, [setMapRef, setMapReady]);
+  }, [mapRef, setMapRef, setMapReady]);
 
   useEffect(() => {
     initializeMap();
@@ -89,83 +90,30 @@ export const useSearch = () => {
     searchQuery,
     suggestions,
     activeIndex,
-    sessionToken,
     setSearchQuery,
     setSuggestions,
     setActiveIndex,
     clearSuggestions,
-    setSessionToken,
+    handleSearch,
+    handleSubmitOrSelect,
   } = useMapStore();
 
   const searchSuggestions = useCallback(
     async (query: string) => {
-      if (!query.trim()) {
-        clearSuggestions();
-        return;
-      }
-
-      try {
-        const token = sessionToken || crypto.randomUUID();
-        setSessionToken(token);
-
-        const response = await fetch(
-          `${MAPBOX_ENDPOINTS.SEARCH_SUGGEST}?q=${encodeURIComponent(
-            query
-          )}&access_token=${mapboxgl.accessToken}&session_token=${token}`
-        );
-
-        if (!response.ok) throw new Error("Search failed");
-
-        const data: MapboxSearchResponse = await response.json();
-        const suggestions: SearchSuggestion[] = (data.suggestions || []).map(
-          (s) => ({
-            id: s.mapbox_id,
-            text: s.name,
-            place_name: s.place_name,
-            center: s.coordinates || [0, 0],
-            context: s.context,
-          })
-        );
-
-        setSuggestions(suggestions);
-      } catch (error) {
-        console.error("Search error:", error);
-        clearSuggestions();
-      }
+      await handleSearch(query);
     },
-    [sessionToken, setSuggestions, clearSuggestions, setSessionToken]
+    [handleSearch]
   );
 
   const selectSuggestion = useCallback(
-    async (suggestion: SearchSuggestion) => {
-      try {
-        const response = await fetch(
-          `${MAPBOX_ENDPOINTS.GEOCODING}/${suggestion.id}.json?access_token=${mapboxgl.accessToken}`
-        );
-
-        if (!response.ok) throw new Error("Geocoding failed");
-
-        const data: MapboxGeocodingResponse = await response.json();
-        const feature = data.features?.[0];
-
-        if (feature) {
-          const map = useMapStore.getState().mapRef.current;
-          if (map) {
-            map.flyTo({
-              center: feature.center as [number, number],
-              zoom: 15,
-              duration: 1000,
-            });
-          }
-        }
-
-        clearSuggestions();
-        setSearchQuery(suggestion.text);
-      } catch (error) {
-        console.error("Geocoding error:", error);
-      }
+    async (suggestion: {
+      id: string;
+      text: string;
+      center?: [number, number];
+    }) => {
+      await handleSubmitOrSelect(suggestion.id);
     },
-    [clearSuggestions, setSearchQuery]
+    [handleSubmitOrSelect]
   );
 
   const handleKeyDown = useCallback(
@@ -261,7 +209,7 @@ export const useMapCamera = () => {
       pitch?: number;
       duration?: number;
     }) => {
-      const map = useMapStore.getState().mapRef.current;
+      const map = useMapStore.getState().mapRef;
       if (!map) return;
 
       map.flyTo({
@@ -282,7 +230,7 @@ export const useMapCamera = () => {
       bearing?: number;
       pitch?: number;
     }) => {
-      const map = useMapStore.getState().mapRef.current;
+      const map = useMapStore.getState().mapRef;
       if (!map) return;
 
       map.jumpTo({
@@ -303,7 +251,7 @@ export const useMapCamera = () => {
         duration?: number;
       }
     ) => {
-      const map = useMapStore.getState().mapRef.current;
+      const map = useMapStore.getState().mapRef;
       if (!map) return;
 
       map.fitBounds(bounds, {
@@ -330,21 +278,19 @@ export const useMapEvents = () => {
 
   const addEventListener = useCallback(
     (event: string, handler: (e: unknown) => void) => {
-      const map = mapRef.current;
-      if (!map) return;
+      if (!mapRef) return;
 
-      map.on(event, handler);
-      return () => map.off(event, handler);
+      mapRef.on(event, handler);
+      return () => mapRef.off(event, handler);
     },
     [mapRef]
   );
 
   const removeEventListener = useCallback(
     (event: string, handler: (e: unknown) => void) => {
-      const map = mapRef.current;
-      if (!map) return;
+      if (!mapRef) return;
 
-      map.off(event, handler);
+      mapRef.off(event, handler);
     },
     [mapRef]
   );

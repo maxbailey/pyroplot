@@ -149,7 +149,7 @@ export const useShareDialog = () => {
   }, [storeHandleCopyUrl]);
 
   const generateShareUrl = useCallback(async () => {
-    if (!mapRef.current) {
+    if (!mapRef) {
       console.error("Map not ready for sharing");
       return;
     }
