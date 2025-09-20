@@ -15,6 +15,14 @@ interface UIState {
   shareUrl: string;
   copied: boolean;
 
+  // Custom annotation form state
+  editingCustomAnnotation: string | null;
+  customLabel: string;
+  customColor: string;
+
+  // Display state
+  showHeight: boolean;
+
   // PDF generation state
   isGenerating: boolean;
 
@@ -45,6 +53,17 @@ interface UIActions {
   setShareUrl: (url: string) => void;
   setCopied: (copied: boolean) => void;
   openShareDialog: () => Promise<void>;
+  handleCopyUrl: () => Promise<void>;
+
+  // Custom annotation form management
+  setEditingCustomAnnotation: (id: string | null) => void;
+  setCustomLabel: (label: string) => void;
+  setCustomColor: (color: string) => void;
+  resetCustomAnnotationForm: () => void;
+  handleCustomAnnotationClick: (annotationId: string) => void;
+
+  // Display state
+  setShowHeight: (show: boolean) => void;
 
   // PDF generation
   setGenerating: (generating: boolean) => void;
@@ -86,6 +105,14 @@ const initialState: UIState = {
   shareUrl: "",
   copied: false,
 
+  // Custom annotation form state
+  editingCustomAnnotation: null,
+  customLabel: "",
+  customColor: "#8B5CF6", // Default custom color
+
+  // Display state
+  showHeight: false,
+
   // PDF generation state
   isGenerating: false,
 
@@ -120,10 +147,44 @@ export const useUIStore = create<UIStore>()(
     setCopied: (copied) => set({ copied: copied }),
 
     openShareDialog: async () => {
-      // TODO: Implement share dialog logic
+      // This will be implemented by the hook that has access to the map and annotation data
       console.log("Opening share dialog...");
       set({ shareOpen: true });
     },
+
+    handleCopyUrl: async () => {
+      const state = get();
+      try {
+        await navigator.clipboard.writeText(state.shareUrl);
+        set({ copied: true });
+        // Auto-reset copied state after 2 seconds
+        setTimeout(() => set({ copied: false }), 2000);
+      } catch (error) {
+        console.error("Failed to copy URL:", error);
+        set({ error: "Failed to copy URL to clipboard" });
+      }
+    },
+
+    // Custom annotation form management
+    setEditingCustomAnnotation: (id) => set({ editingCustomAnnotation: id }),
+    setCustomLabel: (label) => set({ customLabel: label }),
+    setCustomColor: (color) => set({ customColor: color }),
+
+    resetCustomAnnotationForm: () =>
+      set({
+        editingCustomAnnotation: null,
+        customLabel: "",
+        customColor: "#8B5CF6",
+      }),
+
+    handleCustomAnnotationClick: (annotationId) => {
+      // This will be implemented by the hook that has access to annotation data
+      console.log("Handling custom annotation click:", annotationId);
+      set({ editingCustomAnnotation: annotationId });
+    },
+
+    // Display state
+    setShowHeight: (show) => set({ showHeight: show }),
 
     // PDF generation
     setGenerating: (generating) => set({ isGenerating: generating }),
@@ -147,6 +208,10 @@ export const useUIStore = create<UIStore>()(
         disclaimerOpen: false,
         helpOpen: false,
         clearAnnotationsOpen: false,
+        // Reset form state when closing dialogs
+        editingCustomAnnotation: null,
+        customLabel: "",
+        customColor: "#8B5CF6",
       }),
 
     resetUI: () => set(initialState),
@@ -184,6 +249,14 @@ export const uiSelectors = {
   // Share dialog selectors
   shareUrl: (state: UIStore) => state.shareUrl,
   copied: (state: UIStore) => state.copied,
+
+  // Custom annotation form selectors
+  editingCustomAnnotation: (state: UIStore) => state.editingCustomAnnotation,
+  customLabel: (state: UIStore) => state.customLabel,
+  customColor: (state: UIStore) => state.customColor,
+
+  // Display state selectors
+  showHeight: (state: UIStore) => state.showHeight,
 
   // Loading state selectors
   isGenerating: (state: UIStore) => state.isGenerating,

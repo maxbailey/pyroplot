@@ -22,7 +22,6 @@ export {
 export {
   useSettings,
   useFormHandling,
-  useCustomAnnotationForm,
   useSettingsValidation,
   useSettingsPersistence,
   useSettingsExport,
@@ -36,6 +35,7 @@ export {
   useLoadingStates,
   useErrorHandling,
   useDialogState,
+  useCustomAnnotationForm,
 } from "./use-dialogs";
 
 // Re-export store hooks for convenience

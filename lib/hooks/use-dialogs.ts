@@ -1,5 +1,9 @@
 import { useCallback } from "react";
 import { useUIStore, uiSelectors } from "@/lib/store";
+import { useMapStore } from "@/lib/store";
+import { useAnnotationStore } from "@/lib/store";
+import { useSettingsStore } from "@/lib/store";
+import { encodeStateToHash } from "../utils/serialization";
 
 // Main dialog management hook
 export const useDialogs = () => {
@@ -10,12 +14,20 @@ export const useDialogs = () => {
     disclaimerOpen,
     helpOpen,
     clearAnnotationsOpen,
+    editingCustomAnnotation,
+    customLabel,
+    customColor,
+    showHeight,
     setSettingsOpen,
     setCustomAnnotationOpen,
     setShareOpen,
     setDisclaimerOpen,
     setHelpOpen,
     setClearAnnotationsOpen,
+    setEditingCustomAnnotation,
+    setCustomLabel,
+    setCustomColor,
+    setShowHeight,
     closeAllDialogs,
   } = useUIStore();
 
@@ -80,6 +92,12 @@ export const useDialogs = () => {
     helpOpen,
     clearAnnotationsOpen,
 
+    // Custom annotation form state
+    editingCustomAnnotation,
+    customLabel,
+    customColor,
+    showHeight,
+
     // Dialog actions
     openSettings,
     closeSettings,
@@ -94,39 +112,90 @@ export const useDialogs = () => {
     openClearAnnotations,
     closeClearAnnotations,
     closeAll,
+
+    // Custom annotation form actions
+    setEditingCustomAnnotation,
+    setCustomLabel,
+    setCustomColor,
+    setShowHeight,
   };
 };
 
 // Share dialog hook
 export const useShareDialog = () => {
-  const { shareUrl, copied, setShareUrl, setCopied, openShareDialog } =
-    useUIStore();
+  const {
+    shareUrl,
+    copied,
+    setShareUrl,
+    setCopied,
+    setShareOpen,
+    handleCopyUrl: storeHandleCopyUrl,
+  } = useUIStore();
+
+  // Get data from other stores
+  const mapRef = useMapStore((state) => state.mapRef);
+  const camera = useMapStore((state) => state.camera);
+  const annotations = useAnnotationStore((state) => state.annotations);
+  const audienceAreas = useAnnotationStore((state) => state.audienceAreas);
+  const measurements = useAnnotationStore((state) => state.measurements);
+  const restrictedAreas = useAnnotationStore((state) => state.restrictedAreas);
+  const showHeight = useAnnotationStore((state) => state.showHeight);
+  const measurementUnit = useSettingsStore((state) => state.measurementUnit);
+  const projectName = useSettingsStore((state) => state.projectName);
+  const safetyDistance = useSettingsStore((state) => state.safetyDistance);
 
   const handleCopyUrl = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error("Failed to copy URL:", error);
-    }
-  }, [shareUrl, setCopied]);
+    await storeHandleCopyUrl();
+  }, [storeHandleCopyUrl]);
 
-  const generateShareUrl = useCallback(
-    async (stateData: string) => {
-      const url = `${window.location.origin}${window.location.pathname}#${stateData}`;
+  const generateShareUrl = useCallback(async () => {
+    if (!mapRef.current) {
+      console.error("Map not ready for sharing");
+      return;
+    }
+
+    try {
+      const hash = await encodeStateToHash(
+        camera,
+        annotations,
+        audienceAreas,
+        measurements,
+        restrictedAreas,
+        showHeight,
+        measurementUnit,
+        projectName,
+        safetyDistance
+      );
+      const url = `${window.location.origin}${window.location.pathname}#${hash}`;
       setShareUrl(url);
+      setCopied(false);
+      setShareOpen(true);
       return url;
-    },
-    [setShareUrl]
-  );
+    } catch (error) {
+      console.error("Failed to generate share URL:", error);
+      throw error;
+    }
+  }, [
+    mapRef,
+    camera,
+    annotations,
+    audienceAreas,
+    measurements,
+    restrictedAreas,
+    showHeight,
+    measurementUnit,
+    projectName,
+    safetyDistance,
+    setShareUrl,
+    setCopied,
+    setShareOpen,
+  ]);
 
   return {
     shareUrl,
     copied,
-    openShareDialog,
-    handleCopyUrl,
     generateShareUrl,
+    handleCopyUrl,
   };
 };
 
@@ -223,6 +292,55 @@ export const useErrorHandling = () => {
     handleWarning,
     handleSuccess,
     clearAllMessages,
+  };
+};
+
+// Custom annotation form hook
+export const useCustomAnnotationForm = () => {
+  const {
+    editingCustomAnnotation,
+    customLabel,
+    customColor,
+    setEditingCustomAnnotation,
+    setCustomLabel,
+    setCustomColor,
+    resetCustomAnnotationForm,
+    handleCustomAnnotationClick: storeHandleCustomAnnotationClick,
+  } = useUIStore();
+
+  const handleCustomAnnotationClick = useCallback(
+    (annotationId: string) => {
+      storeHandleCustomAnnotationClick(annotationId);
+    },
+    [storeHandleCustomAnnotationClick]
+  );
+
+  const updateCustomLabel = useCallback(
+    (label: string) => {
+      setCustomLabel(label);
+    },
+    [setCustomLabel]
+  );
+
+  const updateCustomColor = useCallback(
+    (color: string) => {
+      setCustomColor(color);
+    },
+    [setCustomColor]
+  );
+
+  const resetForm = useCallback(() => {
+    resetCustomAnnotationForm();
+  }, [resetCustomAnnotationForm]);
+
+  return {
+    editingCustomAnnotation,
+    customLabel,
+    customColor,
+    handleCustomAnnotationClick,
+    updateCustomLabel,
+    updateCustomColor,
+    resetForm,
   };
 };
 
