@@ -4,24 +4,10 @@ import Image from "next/image";
 import { useMemo } from "react";
 import type { AnnotationRecord } from "../../app/components/map-shell";
 import type mapboxgl from "mapbox-gl";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+import { ShareDialog } from "./dialogs/share-dialog";
+import { ClearAnnotationsDialog } from "./dialogs/clear-annotations-dialog";
+import { CustomAnnotationDialog } from "./dialogs/custom-annotation-dialog";
+import { SettingsDialog } from "./dialogs/settings-dialog";
 
 type AnnotationItem = {
   key: string;
@@ -112,17 +98,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   handleSubmitOrSelect,
   settingsOpen,
   setSettingsOpen,
-  projectName,
   formProjectName,
   setFormProjectName,
-  measurementUnit,
   formMeasurementUnit,
   setFormMeasurementUnit,
-  safetyDistance,
   formSafetyDistance,
   setFormSafetyDistance,
   hasFormChanges,
-  setHasFormChanges,
   handleFormChange,
   handleSaveSettings,
   handleCancelSettings,
@@ -132,8 +114,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setCustomLabel,
   customColor,
   setCustomColor,
-  editingCustomAnnotation,
-  setEditingCustomAnnotation,
   handleSaveCustomAnnotation,
   handleCancelCustomAnnotation,
   mapRef,
@@ -148,26 +128,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setCopied,
   openShareDialog,
   clearAllAnnotations,
-  disclaimerOpen,
   setDisclaimerOpen,
   annotationsRef,
   addExtrusionForAnnotation,
   removeExtrusionForAnnotation,
 }) => {
-  // Color presets for custom annotations
-  const colorPresets = [
-    { color: "#EF4444", name: "Red" },
-    { color: "#F97316", name: "Orange" },
-    { color: "#EAB308", name: "Yellow" },
-    { color: "#22C55E", name: "Green" },
-    { color: "#06B6D4", name: "Cyan" },
-    { color: "#3B82F6", name: "Blue" },
-    { color: "#8B5CF6", name: "Purple" },
-    { color: "#EC4899", name: "Pink" },
-    { color: "#262C3F", name: "Dark Gray" },
-    { color: "#808BB3", name: "Light Gray" },
-  ];
-
   const annotationPalette = useMemo<AnnotationItem[]>(
     () => [
       { key: "bore-1", label: '1" Bore', inches: 1, color: "#FF5126" },
@@ -200,6 +165,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside className="w-[300px] shrink-0 border-r border-border p-4 space-y-4 overflow-y-auto">
+      {/* Logo */}
       <div className="flex items-center justify-center select-none">
         <Image
           src="/pyroplot-logo.svg"
@@ -209,6 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
       </div>
 
+      {/* Search */}
       <div>
         <form
           onSubmit={(e) => {
@@ -279,6 +246,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
+      {/* Annotations */}
       <div className="pt-4">
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
           Annotations
@@ -333,170 +301,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
           Actions
         </div>
         <div className="flex flex-col items-stretch gap-2">
-          <Dialog open={settingsOpen} onOpenChange={(o) => setSettingsOpen(o)}>
-            <div className="flex justify-between items-center gap-2">
-              <DialogTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
-                >
-                  Settings
-                </button>
-              </DialogTrigger>
-            </div>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Settings</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="grid grid-cols-[160px_1fr] items-center gap-3">
-                  <label className="text-sm text-muted-foreground">
-                    Project Name
-                  </label>
-                  <Input
-                    value={formProjectName}
-                    onChange={(e) => {
-                      setFormProjectName(e.target.value);
-                      handleFormChange();
-                    }}
-                    placeholder="Enter project name"
-                  />
-                </div>
-                <div className="grid grid-cols-[160px_1fr] items-center gap-3">
-                  <label className="text-sm text-muted-foreground">
-                    Measurement Unit
-                  </label>
-                  <Select
-                    value={formMeasurementUnit}
-                    onValueChange={(v) => {
-                      setFormMeasurementUnit(v as MeasurementUnit);
-                      handleFormChange();
-                    }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select unit" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="feet">Feet</SelectItem>
-                      <SelectItem value="meters">Meters</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-[160px_1fr] items-center gap-3">
-                  <label className="text-sm text-muted-foreground">
-                    Safety Distance
-                  </label>
-                  <Select
-                    value={formSafetyDistance.toString()}
-                    onValueChange={(v) => {
-                      setFormSafetyDistance(Number(v) as 70 | 100);
-                      handleFormChange();
-                    }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select safety distance" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="70">70ft per inch</SelectItem>
-                      <SelectItem value="100">100ft per inch</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={handleCancelSettings}
-                  className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveSettings}
-                  disabled={!hasFormChanges}
-                  className="inline-flex items-center justify-center rounded-md bg-brand text-white px-3 py-2 text-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Save Changes
-                </button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          {/* Settings Dialog */}
+          <SettingsDialog
+            settingsOpen={settingsOpen}
+            setSettingsOpen={setSettingsOpen}
+            formProjectName={formProjectName}
+            setFormProjectName={setFormProjectName}
+            formMeasurementUnit={formMeasurementUnit}
+            setFormMeasurementUnit={setFormMeasurementUnit}
+            formSafetyDistance={formSafetyDistance}
+            setFormSafetyDistance={setFormSafetyDistance}
+            hasFormChanges={hasFormChanges}
+            handleFormChange={handleFormChange}
+            handleSaveSettings={handleSaveSettings}
+            handleCancelSettings={handleCancelSettings}
+          />
 
           {/* Custom Annotation Dialog */}
-          <Dialog
-            open={customAnnotationOpen}
-            onOpenChange={setCustomAnnotationOpen}
-          >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Custom Annotation</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="grid grid-cols-[160px_1fr] items-center gap-3">
-                  <label className="text-sm text-muted-foreground">Label</label>
-                  <Input
-                    value={customLabel}
-                    onChange={(e) => setCustomLabel(e.target.value)}
-                    placeholder="Enter label"
-                  />
-                </div>
-                <div className="grid grid-cols-[160px_1fr] items-center gap-3">
-                  <label className="text-sm text-muted-foreground">Color</label>
-                  <div className="grid grid-cols-5 gap-3 w-full max-w-xs">
-                    {colorPresets.map((preset) => (
-                      <button
-                        key={preset.color}
-                        type="button"
-                        onClick={() => {
-                          setCustomColor(preset.color);
-                          handleFormChange();
-                        }}
-                        className={`w-10 h-10 rounded-lg relative flex items-center justify-center ${
-                          customColor === preset.color
-                            ? "ring-2 ring-gray-900"
-                            : "hover:ring-1 hover:ring-gray-400"
-                        }`}
-                        style={{ backgroundColor: preset.color }}
-                        title={preset.name}
-                      >
-                        {customColor === preset.color && (
-                          <svg
-                            className="w-5 h-5 text-white drop-shadow-sm"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={handleCancelCustomAnnotation}
-                  className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveCustomAnnotation}
-                  className="inline-flex items-center justify-center rounded-md bg-brand text-white px-3 py-2 text-sm hover:opacity-90"
-                >
-                  Save
-                </button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <CustomAnnotationDialog
+            customAnnotationOpen={customAnnotationOpen}
+            setCustomAnnotationOpen={setCustomAnnotationOpen}
+            customLabel={customLabel}
+            setCustomLabel={setCustomLabel}
+            customColor={customColor}
+            setCustomColor={setCustomColor}
+            handleFormChange={handleFormChange}
+            handleSaveCustomAnnotation={handleSaveCustomAnnotation}
+            handleCancelCustomAnnotation={handleCancelCustomAnnotation}
+          />
 
+          {/* Reset Camera Button */}
           <button
             type="button"
             onClick={() => {
@@ -513,6 +347,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             Reset Camera
           </button>
+
+          {/* Show Height Button */}
           <button
             type="button"
             onClick={() => {
@@ -541,103 +377,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             {isGenerating ? "Generating…" : "Generate Site Plan"}
           </button>
-          <Dialog
-            open={shareOpen}
-            onOpenChange={(open) => {
-              setShareOpen(open);
-              if (!open) setCopied(false);
-            }}
-          >
-            <div className="flex justify-between items-center gap-2">
-              <DialogTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => void openShareDialog()}
-                  className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
-                >
-                  Share Site Plan
-                </button>
-              </DialogTrigger>
-            </div>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Share this site plan</DialogTitle>
-                <DialogDescription>
-                  Copy this link to share. Opening it restores the current
-                  camera and annotations.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-2">
-                <input
-                  value={shareUrl}
-                  readOnly
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                />
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(shareUrl);
-                        setCopied(true);
-                      } catch {}
-                    }}
-                    className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
-                  >
-                    {copied ? "✓ Copied Link" : "Copy link"}
-                  </button>
-                  <DialogClose asChild>
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
-                    >
-                      Close
-                    </button>
-                  </DialogClose>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-          <Dialog>
-            <div className="flex justify-between items-center gap-2">
-              <DialogTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background text-brand px-3 py-2 text-sm hover:bg-muted"
-                >
-                  Clear Annotations
-                </button>
-              </DialogTrigger>
-            </div>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Clear annotations?</DialogTitle>
-                <DialogDescription>
-                  This will remove all annotations you have added to the map.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <DialogClose asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
-                  >
-                    Cancel
-                  </button>
-                </DialogClose>
-                <DialogClose asChild>
-                  <button
-                    type="button"
-                    onClick={() => clearAllAnnotations()}
-                    className="inline-flex items-center justify-center rounded-md bg-brand text-white px-3 py-2 text-sm hover:opacity-90"
-                  >
-                    Confirm clear
-                  </button>
-                </DialogClose>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+
+          {/* Share Dialog */}
+          <ShareDialog
+            shareOpen={shareOpen}
+            setShareOpen={setShareOpen}
+            shareUrl={shareUrl}
+            copied={copied}
+            setCopied={setCopied}
+            openShareDialog={openShareDialog}
+          />
+
+          {/* Clear Annotations Dialog */}
+          <ClearAnnotationsDialog clearAllAnnotations={clearAllAnnotations} />
         </div>
+
+        {/* Legal Disclaimer */}
         <p className="mt-6 text-xs text-muted-foreground text-center">
           © {new Date().getFullYear()} Pyro Plot. All rights reserved.
           <br />
