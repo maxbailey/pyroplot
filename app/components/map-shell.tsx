@@ -8,6 +8,7 @@ import { usePdfGenerator } from "@/components/pdf-generator";
 import { feetToMeters, metersToFeet } from "@/components/pdf-generator/utils";
 import type {
   AnnotationItem,
+  AnnotationType,
   AnnotationRecord,
   AudienceRecord,
   MeasurementRecord,
@@ -20,6 +21,9 @@ import type {
   SerializedAudience,
   SerializedMeasurement,
   SerializedRestricted,
+  SearchSuggestion,
+  MapboxSearchResponse,
+  MapboxGeocodingResponse,
 } from "@/lib/types";
 import {
   ANNOTATION_PALETTE,
@@ -34,6 +38,18 @@ import {
   DEFAULT_MEASUREMENT_COLOR,
   DEFAULT_RESTRICTED_COLOR,
 } from "@/lib/constants";
+import {
+  createCircleFeature,
+  createRectangleFeature,
+  normalizeCorners,
+  formatDistanceWithSpace,
+  formatLengthNoSpace,
+  refreshAllAnnotationTexts,
+  getNextAnnotationNumber,
+  renumberAnnotations,
+  encodeStateToHash,
+  decodeStateFromHash,
+} from "@/lib/utils/index";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
@@ -115,7 +131,15 @@ export function MapShell() {
     setSettingsOpen(false);
 
     // Update existing annotations with new safety distance
-    refreshAllMeasurementTexts();
+    refreshAllAnnotationTexts(
+      mapRef.current!,
+      annotationsRef.current,
+      audienceAreasRef.current,
+      measurementsRef.current,
+      restrictedAreasRef.current,
+      safetyDistance,
+      measurementUnit
+    );
   };
 
   // Handle form cancellation
@@ -128,44 +152,8 @@ export function MapShell() {
   };
 
   // Helper function to get next available annotation number
-  const getNextAnnotationNumber = () => {
-    const allAnnotations = Object.values(annotationsRef.current);
-    const allNumbers = allAnnotations
-      .map((ann) => ann.number)
-      .sort((a, b) => a - b);
-
-    // Find the first gap in the sequence
-    for (let i = 1; i <= allNumbers.length + 1; i++) {
-      if (!allNumbers.includes(i)) {
-        return i;
-      }
-    }
-    return allNumbers.length + 1;
-  };
 
   // Helper function to renumber all annotations after deletion
-  const renumberAnnotations = () => {
-    const allAnnotations = Object.values(annotationsRef.current).sort(
-      (a, b) => a.number - b.number
-    );
-    allAnnotations.forEach((annotation, index) => {
-      annotation.number = index + 1;
-
-      // Update visual labels for firework annotations
-      if (annotation.type === "firework") {
-        const markerEl = annotation.marker.getElement();
-        const labelEl = markerEl.querySelector("div") as HTMLDivElement;
-        if (labelEl) {
-          const firstDiv = labelEl.querySelector(
-            "div:first-child"
-          ) as HTMLDivElement;
-          if (firstDiv) {
-            firstDiv.textContent = annotation.label;
-          }
-        }
-      }
-    });
-  };
 
   // Custom annotation handlers
   const handleCustomAnnotationClick = (annotationId: string) => {
@@ -299,135 +287,19 @@ export function MapShell() {
     setCustomColor(DEFAULT_CUSTOM_COLOR);
   };
 
-  function formatDistanceWithSpace(meters: number): string {
-    if (measurementUnit === "feet") {
-      return `${Math.round(metersToFeet(meters))} ft`;
-    }
-    return `${Math.round(meters)} m`;
-  }
-
-  function formatLengthNoSpace(meters: number): string {
-    if (measurementUnit === "feet") {
-      return `${Math.round(metersToFeet(meters))}ft`;
-    }
-    return `${Math.round(meters)}m`;
-  }
-
-  function refreshAllMeasurementTexts() {
-    const map = mapRef.current;
-    if (!map) return;
-    // Measurements
-    for (const key of Object.keys(measurementsRef.current)) {
-      const rec = measurementsRef.current[key]!;
-      const pts = rec.points;
-      const lat1 = (pts[0][1] * Math.PI) / 180;
-      const lat2 = (pts[1][1] * Math.PI) / 180;
-      const deltaLat = ((pts[1][1] - pts[0][1]) * Math.PI) / 180;
-      const deltaLng = ((pts[1][0] - pts[0][0]) * Math.PI) / 180;
-      const a =
-        Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-        Math.cos(lat1) *
-          Math.cos(lat2) *
-          Math.sin(deltaLng / 2) *
-          Math.sin(deltaLng / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const distanceMeters = GEO_CONSTANTS.EARTH_RADIUS * c;
-      const el = rec.labelMarker.getElement();
-      let distanceDiv = el.querySelector(
-        '[data-role="distance"]'
-      ) as HTMLDivElement | null;
-      if (!distanceDiv) {
-        distanceDiv = el.querySelector(
-          "div:nth-child(2)"
-        ) as HTMLDivElement | null;
-        if (distanceDiv) distanceDiv.setAttribute("data-role", "distance");
-      }
-      if (distanceDiv)
-        distanceDiv.textContent = formatDistanceWithSpace(distanceMeters);
-    }
-    // Audience areas
-    for (const key of Object.keys(audienceAreasRef.current)) {
-      const rec = audienceAreasRef.current[key]!;
-      const c = rec.corners;
-      const centerLat = (c[0][1] + c[2][1]) / 2;
-      const metersW =
-        Math.abs(c[1][0] - c[0][0]) *
-        GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
-        Math.cos((centerLat * Math.PI) / 180);
-      const metersH =
-        Math.abs(c[3][1] - c[0][1]) * GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
-      const root = rec.labelMarker.getElement();
-      let div = root.querySelector(
-        '[data-role="dims"]'
-      ) as HTMLDivElement | null;
-      if (!div) {
-        div = root.querySelector("div:nth-child(2)") as HTMLDivElement | null;
-        if (div) div.setAttribute("data-role", "dims");
-      }
-      if (div)
-        div.textContent = `${formatLengthNoSpace(
-          metersW
-        )} × ${formatLengthNoSpace(metersH)}`;
-    }
-    // Restricted areas
-    for (const key of Object.keys(restrictedAreasRef.current)) {
-      const rec = restrictedAreasRef.current[key]!;
-      const c = rec.corners;
-      const centerLat = (c[0][1] + c[2][1]) / 2;
-      const metersW =
-        Math.abs(c[1][0] - c[0][0]) *
-        GEO_CONSTANTS.METERS_PER_DEGREE_LNG *
-        Math.cos((centerLat * Math.PI) / 180);
-      const metersH =
-        Math.abs(c[3][1] - c[0][1]) * GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
-      const root = rec.labelMarker.getElement();
-      let div = root.querySelector(
-        '[data-role="dims"]'
-      ) as HTMLDivElement | null;
-      if (!div) {
-        div = root.querySelector("div:nth-child(2)") as HTMLDivElement | null;
-        if (div) div.setAttribute("data-role", "dims");
-      }
-      if (div)
-        div.textContent = `${formatLengthNoSpace(
-          metersW
-        )} × ${formatLengthNoSpace(metersH)}`;
-    }
-    // Firework radius labels and circles
-    for (const key of Object.keys(annotationsRef.current)) {
-      const rec = annotationsRef.current[key]!;
-      if (rec.type !== "firework") continue;
-      const el = rec.marker.getElement();
-      const second = el.querySelector(
-        "div:nth-child(2)"
-      ) as HTMLDivElement | null;
-      if (!second) continue;
-      const radiusFeet = Math.round(rec.inches * safetyDistance);
-      const text =
-        measurementUnit === "feet"
-          ? `${radiusFeet} ft radius`
-          : `${Math.round(feetToMeters(radiusFeet))} m radius`;
-      second.textContent = text;
-
-      // Update circle geometry with new safety distance
-      const pos = rec.marker.getLngLat();
-      const radiusMeters = feetToMeters(rec.inches * safetyDistance);
-      const updatedCircle = createCircleFeature(pos.lng, pos.lat, radiusMeters);
-      const source = map.getSource(rec.sourceId) as mapboxgl.GeoJSONSource;
-      if (source) {
-        source.setData({
-          type: "FeatureCollection",
-          features: [updatedCircle],
-        } as FeatureCollection);
-      }
-    }
-  }
-
   useEffect(() => {
     // Recompute and rewrite all visible annotation label texts when unit or safety distance changes
     if (!isMapReady) return;
     try {
-      refreshAllMeasurementTexts();
+      refreshAllAnnotationTexts(
+        mapRef.current!,
+        annotationsRef.current,
+        audienceAreasRef.current,
+        measurementsRef.current,
+        restrictedAreasRef.current,
+        safetyDistance,
+        measurementUnit
+      );
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measurementUnit, safetyDistance, isMapReady]);
@@ -653,177 +525,6 @@ export function MapShell() {
 
   // --- Share/Load helpers ---
 
-  function base64UrlEncode(bytes: Uint8Array) {
-    let binary = "";
-    for (let i = 0; i < bytes.length; i++)
-      binary += String.fromCharCode(bytes[i]!);
-    const b64 = btoa(binary);
-    return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  }
-
-  function base64UrlDecode(input: string): Uint8Array {
-    const b64 =
-      input.replace(/-/g, "+").replace(/_/g, "/") +
-      "===".slice((input.length + 3) % 4);
-    const binary = atob(b64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  }
-
-  async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
-    if ("CompressionStream" in window) {
-      const cs = new CompressionStream("gzip");
-      const ab = data.buffer.slice(
-        data.byteOffset,
-        data.byteOffset + data.byteLength
-      ) as ArrayBuffer;
-      const stream = new Response(new Blob([ab])).body as ReadableStream;
-      const writer = stream.pipeThrough(cs).getReader();
-      const chunks: Uint8Array[] = [];
-      // Collect all chunks
-      while (true) {
-        const { value, done } = await writer.read();
-        if (done) break;
-        if (value) chunks.push(value);
-      }
-      const total = chunks.reduce((n, c) => n + c.length, 0);
-      const out = new Uint8Array(total);
-      let off = 0;
-      for (const c of chunks) {
-        out.set(c, off);
-        off += c.length;
-      }
-      return out;
-    }
-    return data; // Fallback: no compression
-  }
-
-  async function gzipDecompress(data: Uint8Array): Promise<Uint8Array> {
-    if ("DecompressionStream" in window) {
-      const ds = new DecompressionStream("gzip");
-      const ab = data.buffer.slice(
-        data.byteOffset,
-        data.byteOffset + data.byteLength
-      ) as ArrayBuffer;
-      const stream = new Response(new Blob([ab])).body as ReadableStream;
-      const writer = stream.pipeThrough(ds).getReader();
-      const chunks: Uint8Array[] = [];
-      while (true) {
-        const { value, done } = await writer.read();
-        if (done) break;
-        if (value) chunks.push(value);
-      }
-      const total = chunks.reduce((n, c) => n + c.length, 0);
-      const out = new Uint8Array(total);
-      let off = 0;
-      for (const c of chunks) {
-        out.set(c, off);
-        off += c.length;
-      }
-      return out;
-    }
-    return data; // Fallback: already plain
-  }
-
-  async function encodeStateToHash(): Promise<string> {
-    if (!mapRef.current) return "";
-    const map = mapRef.current;
-    const camera = {
-      center: [map.getCenter().lng, map.getCenter().lat] as [number, number],
-      zoom: map.getZoom(),
-      bearing: map.getBearing(),
-      pitch: map.getPitch(),
-    };
-    const fireworks: SerializedFirework[] = Object.values(
-      annotationsRef.current
-    )
-      .filter((rec) => rec.type === "firework")
-      .map((rec) => {
-        const pos = rec.marker.getLngLat();
-        return {
-          id: rec.id,
-          number: rec.number,
-          inches: rec.inches,
-          label: rec.label,
-          color: rec.color,
-          position: [pos.lng, pos.lat],
-        };
-      });
-
-    const custom: SerializedCustom[] = Object.values(annotationsRef.current)
-      .filter((rec) => rec.type === "custom")
-      .map((rec) => {
-        const pos = rec.marker.getLngLat();
-        return {
-          id: rec.id,
-          number: rec.number,
-          label: rec.label,
-          color: rec.color,
-          position: [pos.lng, pos.lat],
-          emoji: rec.emoji,
-          description: rec.description,
-        };
-      });
-    const audiences: SerializedAudience[] = Object.values(
-      audienceAreasRef.current
-    ).map((rec) => ({
-      id: rec.id,
-      number: rec.number,
-      corners: rec.corners,
-    }));
-    const measurements: SerializedMeasurement[] = Object.values(
-      measurementsRef.current
-    ).map((rec) => ({
-      id: rec.id,
-      number: rec.number,
-      points: rec.points,
-    }));
-    const restricted: SerializedRestricted[] = Object.values(
-      restrictedAreasRef.current
-    ).map((rec) => ({
-      id: rec.id,
-      number: rec.number,
-      corners: rec.corners,
-    }));
-    const state: SerializedState = {
-      camera,
-      fireworks,
-      custom,
-      audiences,
-      measurements,
-      restricted,
-      showHeight,
-      measurementUnit,
-      projectName,
-      safetyDistance,
-      v: 1,
-    };
-    const json = JSON.stringify(state);
-    const raw = new TextEncoder().encode(json);
-    const gz = await gzipCompress(raw);
-    const data = base64UrlEncode(gz);
-    return `s=${data}`;
-  }
-
-  async function decodeStateFromHash(
-    hash: string
-  ): Promise<SerializedState | null> {
-    try {
-      const params = new URLSearchParams(hash.replace(/^#?/, ""));
-      const enc = params.get("s");
-      if (!enc) return null;
-      const gz = base64UrlDecode(enc);
-      const raw = await gzipDecompress(gz);
-      const json = new TextDecoder().decode(raw);
-      const parsed = JSON.parse(json) as SerializedState;
-      if (!parsed || parsed.v !== 1) return null;
-      return parsed;
-    } catch {
-      return null;
-    }
-  }
-
   function restoreFromState(state: SerializedState) {
     const map = mapRef.current;
     if (!map) return;
@@ -842,7 +543,19 @@ export function MapShell() {
     ) {
       setMeasurementUnit(state.measurementUnit);
       // defer refresh until elements exist
-      setTimeout(() => refreshAllMeasurementTexts(), 0);
+      setTimeout(
+        () =>
+          refreshAllAnnotationTexts(
+            mapRef.current!,
+            annotationsRef.current,
+            audienceAreasRef.current,
+            measurementsRef.current,
+            restrictedAreasRef.current,
+            safetyDistance,
+            measurementUnit
+          ),
+        0
+      );
     }
     if (state.projectName) {
       setProjectName(state.projectName);
@@ -1139,8 +852,9 @@ export function MapShell() {
         Math.abs(corners[3][1] - corners[0][1]) *
         GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
       dims.textContent = `${formatLengthNoSpace(
-        metersW
-      )} × ${formatLengthNoSpace(metersH)}`;
+        metersW,
+        measurementUnit
+      )} × ${formatLengthNoSpace(metersH, measurementUnit)}`;
       label.appendChild(title);
       label.appendChild(dims);
       const centerLng = (corners[0][0] + corners[2][0]) / 2;
@@ -1179,8 +893,9 @@ export function MapShell() {
           Math.abs(moved[3][1] - moved[0][1]) *
           GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         dims.textContent = `${formatLengthNoSpace(
-          metersWNow
-        )} × ${formatLengthNoSpace(metersHNow)}`;
+          metersWNow,
+          measurementUnit
+        )} × ${formatLengthNoSpace(metersHNow, measurementUnit)}`;
       };
       labelMarker.on("drag", updateRectFromLabel);
       labelMarker.on("dragend", updateRectFromLabel);
@@ -1231,8 +946,9 @@ export function MapShell() {
             Math.abs(corners[3][1] - corners[0][1]) *
             GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           dims.textContent = `${formatLengthNoSpace(
-            metersW2
-          )} × ${formatLengthNoSpace(metersH2)}`;
+            metersW2,
+            measurementUnit
+          )} × ${formatLengthNoSpace(metersH2, measurementUnit)}`;
           audienceAreasRef.current[id].corners = corners;
           corners.forEach((p, i) => cornerMarkers[i].setLngLat(p));
         };
@@ -1325,7 +1041,10 @@ export function MapShell() {
           Math.sin(deltaLng / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const distanceMeters = GEO_CONSTANTS.EARTH_RADIUS * c; // Earth radius in meters
-      distance.textContent = formatDistanceWithSpace(distanceMeters);
+      distance.textContent = formatDistanceWithSpace(
+        distanceMeters,
+        measurementUnit
+      );
 
       label.appendChild(title);
       label.appendChild(distance);
@@ -1394,7 +1113,10 @@ export function MapShell() {
               Math.sin(deltaLng / 2);
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
           const distanceMeters = GEO_CONSTANTS.EARTH_RADIUS * c; // Earth radius in meters
-          distance.textContent = formatDistanceWithSpace(distanceMeters);
+          distance.textContent = formatDistanceWithSpace(
+            distanceMeters,
+            measurementUnit
+          );
 
           // Update points reference
           points[0] = newPoints[0];
@@ -1477,8 +1199,9 @@ export function MapShell() {
         Math.abs(corners[3][1] - corners[0][1]) *
         GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
       dims.textContent = `${formatLengthNoSpace(
-        metersW
-      )} × ${formatLengthNoSpace(metersH)}`;
+        metersW,
+        measurementUnit
+      )} × ${formatLengthNoSpace(metersH, measurementUnit)}`;
       label.appendChild(title);
       label.appendChild(dims);
       const centerLng = (corners[0][0] + corners[2][0]) / 2;
@@ -1517,8 +1240,9 @@ export function MapShell() {
           Math.abs(moved[3][1] - moved[0][1]) *
           GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         dims.textContent = `${formatLengthNoSpace(
-          metersWNow
-        )} × ${formatLengthNoSpace(metersHNow)}`;
+          metersWNow,
+          measurementUnit
+        )} × ${formatLengthNoSpace(metersHNow, measurementUnit)}`;
       };
       labelMarker.on("drag", updateRectFromLabel);
       labelMarker.on("dragend", updateRectFromLabel);
@@ -1569,8 +1293,9 @@ export function MapShell() {
             Math.abs(corners[3][1] - corners[0][1]) *
             GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           dims.textContent = `${formatLengthNoSpace(
-            metersW2
-          )} × ${formatLengthNoSpace(metersH2)}`;
+            metersW2,
+            measurementUnit
+          )} × ${formatLengthNoSpace(metersH2, measurementUnit)}`;
           restrictedAreasRef.current[id].corners = corners;
           corners.forEach((p, i) => cornerMarkers[i].setLngLat(p));
         };
@@ -1631,65 +1356,29 @@ export function MapShell() {
   }, [settingsOpen, projectName, measurementUnit, safetyDistance]);
 
   async function openShareDialog() {
-    const q = await encodeStateToHash();
+    const q = await encodeStateToHash(
+      {
+        center: [
+          mapRef.current!.getCenter().lng,
+          mapRef.current!.getCenter().lat,
+        ] as [number, number],
+        zoom: mapRef.current!.getZoom(),
+        bearing: mapRef.current!.getBearing(),
+        pitch: mapRef.current!.getPitch(),
+      },
+      annotationsRef.current,
+      audienceAreasRef.current,
+      measurementsRef.current,
+      restrictedAreasRef.current,
+      showHeight,
+      measurementUnit,
+      projectName,
+      safetyDistance
+    );
     const url = `${window.location.origin}${window.location.pathname}#${q}`;
     setShareUrl(url);
     setCopied(false);
     setShareOpen(true);
-  }
-
-  function normalizeCorners(input: [number, number][]): [number, number][] {
-    const lngs = input.map((c) => c[0]);
-    const lats = input.map((c) => c[1]);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    return [
-      [minLng, minLat], // SW
-      [maxLng, minLat], // SE
-      [maxLng, maxLat], // NE
-      [minLng, maxLat], // NW
-    ];
-  }
-
-  function createCircleFeature(
-    lng: number,
-    lat: number,
-    radiusMeters: number,
-    points = 64
-  ): Feature<Polygon> {
-    const coords: [number, number][] = [];
-    const center = [lng, lat] as [number, number];
-    const earthRadius = 6378137; // meters
-    for (let i = 0; i < points; i++) {
-      const angle = (i / points) * 2 * Math.PI;
-      const dx = (radiusMeters / earthRadius) * Math.cos(angle);
-      const dy = (radiusMeters / earthRadius) * Math.sin(angle);
-      const newLng =
-        center[0] +
-        (dx * 180) / Math.PI / Math.cos((center[1] * Math.PI) / 180);
-      const newLat = center[1] + (dy * 180) / Math.PI;
-      coords.push([newLng, newLat]);
-    }
-    coords.push(coords[0]);
-    return {
-      type: "Feature",
-      geometry: { type: "Polygon", coordinates: [coords] },
-      properties: {},
-    } as Feature<Polygon>;
-  }
-
-  function createRectangleFeature(
-    corners: [number, number][]
-  ): Feature<Polygon> {
-    // corners should be in [lng, lat] order and form a rectangle
-    const ring = [...corners, corners[0]] as [number, number][];
-    return {
-      type: "Feature",
-      geometry: { type: "Polygon", coordinates: [ring] },
-      properties: {},
-    } as Feature<Polygon>;
   }
 
   // removed unused pointInPoly helper
@@ -1723,7 +1412,8 @@ export function MapShell() {
     delete annotationsRef.current[id];
 
     // Renumber remaining annotations
-    renumberAnnotations();
+    const updatedAnnotations = renumberAnnotations(annotationsRef.current);
+    annotationsRef.current = updatedAnnotations;
   }
 
   function removeCustomAnnotation(id: string) {
@@ -1745,7 +1435,8 @@ export function MapShell() {
     delete annotationsRef.current[id];
 
     // Renumber remaining annotations
-    renumberAnnotations();
+    const updatedAnnotations = renumberAnnotations(annotationsRef.current);
+    annotationsRef.current = updatedAnnotations;
   }
 
   function removeAudienceArea(id: string) {
@@ -1910,8 +1601,9 @@ export function MapShell() {
       dims.setAttribute("data-role", "dims");
       dims.setAttribute("data-role", "dims");
       dims.textContent = `${formatLengthNoSpace(
-        metersW
-      )} × ${formatLengthNoSpace(metersH)}`;
+        metersW,
+        measurementUnit
+      )} × ${formatLengthNoSpace(metersH, measurementUnit)}`;
       label.appendChild(title);
       label.appendChild(dims);
       // Position label at top middle, 20ft off the top
@@ -1963,8 +1655,9 @@ export function MapShell() {
           Math.abs(movedCorners[3][1] - movedCorners[0][1]) *
           GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         dims.textContent = `${formatLengthNoSpace(
-          metersWNow
-        )} × ${formatLengthNoSpace(metersHNow)}`;
+          metersWNow,
+          measurementUnit
+        )} × ${formatLengthNoSpace(metersHNow, measurementUnit)}`;
       };
       labelMarker.on("drag", onLabelDrag);
       labelMarker.on("dragend", onLabelDrag);
@@ -2028,8 +1721,9 @@ export function MapShell() {
             Math.abs(corners[3][1] - corners[0][1]) *
             GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           dims.textContent = `${formatLengthNoSpace(
-            metersW
-          )} × ${formatLengthNoSpace(metersH)}`;
+            metersW,
+            measurementUnit
+          )} × ${formatLengthNoSpace(metersH, measurementUnit)}`;
           audienceAreasRef.current[id].corners = corners;
           // move all corner pins in realtime to their new corners
           corners.forEach((p, i) => cornerMarkers[i].setLngLat(p));
@@ -2117,7 +1811,10 @@ export function MapShell() {
       const distance = document.createElement("div");
       distance.className = "text-[10px] text-muted-foreground";
       distance.setAttribute("data-role", "distance");
-      distance.textContent = formatDistanceWithSpace(distanceMeters);
+      distance.textContent = formatDistanceWithSpace(
+        distanceMeters,
+        measurementUnit
+      );
 
       label.appendChild(title);
       label.appendChild(distance);
@@ -2188,7 +1885,10 @@ export function MapShell() {
               Math.sin(deltaLng / 2);
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
           const distanceMeters = GEO_CONSTANTS.EARTH_RADIUS * c; // Earth radius in meters
-          distance.textContent = formatDistanceWithSpace(distanceMeters);
+          distance.textContent = formatDistanceWithSpace(
+            distanceMeters,
+            measurementUnit
+          );
 
           // Update points reference
           points[0] = newPoints[0];
@@ -2317,8 +2017,9 @@ export function MapShell() {
       dims.className = "text-[10px] text-muted-foreground";
       dims.setAttribute("data-role", "dims");
       dims.textContent = `${formatLengthNoSpace(
-        metersW
-      )} × ${formatLengthNoSpace(metersH)}`;
+        metersW,
+        measurementUnit
+      )} × ${formatLengthNoSpace(metersH, measurementUnit)}`;
       label.appendChild(title);
       label.appendChild(dims);
       // Position label at top middle, 20ft off the top
@@ -2370,8 +2071,9 @@ export function MapShell() {
           Math.abs(movedCorners[3][1] - movedCorners[0][1]) *
           GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
         dims.textContent = `${formatLengthNoSpace(
-          metersWNow
-        )} × ${formatLengthNoSpace(metersHNow)}`;
+          metersWNow,
+          measurementUnit
+        )} × ${formatLengthNoSpace(metersHNow, measurementUnit)}`;
       };
       labelMarker.on("drag", onLabelDrag);
       labelMarker.on("dragend", onLabelDrag);
@@ -2435,8 +2137,9 @@ export function MapShell() {
             Math.abs(corners[3][1] - corners[0][1]) *
             GEO_CONSTANTS.METERS_PER_DEGREE_LAT;
           dims.textContent = `${formatLengthNoSpace(
-            metersW
-          )} × ${formatLengthNoSpace(metersH)}`;
+            metersW,
+            measurementUnit
+          )} × ${formatLengthNoSpace(metersH, measurementUnit)}`;
           restrictedAreasRef.current[id].corners = corners;
           // move all corner pins in realtime to their new corners
           corners.forEach((p, i) => cornerMarkers[i].setLngLat(p));
@@ -2463,7 +2166,7 @@ export function MapShell() {
     if (item.key === "custom") {
       // Create custom annotation with default values
       const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const number = getNextAnnotationNumber();
+      const number = getNextAnnotationNumber(annotationsRef.current);
 
       // Create default Mapbox marker with custom color
       const marker = new mapboxgl.Marker({
@@ -2618,7 +2321,7 @@ export function MapShell() {
     const circleId = `circle-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2)}`;
-    const number = getNextAnnotationNumber();
+    const number = getNextAnnotationNumber(annotationsRef.current);
     // right-click on label removes the entire annotation
     labelEl.addEventListener("contextmenu", (evt) => {
       evt.preventDefault();
