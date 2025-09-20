@@ -144,20 +144,6 @@ export function MapShell() {
     safetyDistance,
   });
 
-  // Color presets for custom annotations
-  const colorPresets = [
-    { color: "#EF4444", name: "Red" },
-    { color: "#F97316", name: "Orange" },
-    { color: "#EAB308", name: "Yellow" },
-    { color: "#22C55E", name: "Green" },
-    { color: "#2BB6F6", name: "Blue" },
-    { color: "#6366F1", name: "Indigo" },
-    { color: "#A855F7", name: "Purple" },
-    { color: "#EC4899", name: "Pink" },
-    { color: "#1B1C20", name: "Dark Gray" },
-    { color: "#BEC2CD", name: "Light Gray" },
-  ];
-
   // Handle form field changes
   const handleFormChange = () => {
     setHasFormChanges(true);
@@ -355,8 +341,6 @@ export function MapShell() {
     setCustomLabel("");
     setCustomColor("#FF5126");
   };
-
-  const unitLabel = measurementUnit === "feet" ? "ft" : "m";
 
   function formatDistanceWithSpace(meters: number): string {
     if (measurementUnit === "feet") {

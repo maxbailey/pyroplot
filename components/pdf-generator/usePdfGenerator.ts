@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { Feature, FeatureCollection } from "geojson";
-import mapboxgl from "mapbox-gl";
 import {
   loadJsPDF,
   feetToMeters,
@@ -8,13 +7,18 @@ import {
   createCircleFeature,
 } from "./utils";
 import type { AnnotationRecord } from "../../app/components/map-shell";
+import type {
+  AudienceRecord,
+  MeasurementRecord,
+  RestrictedRecord,
+} from "./types";
 
 interface UsePdfGeneratorProps {
   mapRef: React.RefObject<mapboxgl.Map | null>;
   annotationsRef: React.MutableRefObject<Record<string, AnnotationRecord>>;
-  audienceAreasRef: React.MutableRefObject<Record<string, any>>;
-  measurementsRef: React.MutableRefObject<Record<string, any>>;
-  restrictedAreasRef: React.MutableRefObject<Record<string, any>>;
+  audienceAreasRef: React.MutableRefObject<Record<string, AudienceRecord>>;
+  measurementsRef: React.MutableRefObject<Record<string, MeasurementRecord>>;
+  restrictedAreasRef: React.MutableRefObject<Record<string, RestrictedRecord>>;
   projectName: string;
   measurementUnit: "feet" | "meters";
   safetyDistance: 70 | 100;
