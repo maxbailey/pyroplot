@@ -64,7 +64,7 @@ type AnnotationType =
   | "restricted"
   | "custom";
 
-interface AnnotationRecord {
+export interface AnnotationRecord {
   type: AnnotationType;
   number: number;
   id: string;

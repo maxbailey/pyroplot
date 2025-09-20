@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { useMemo } from "react";
+import type { AnnotationRecord } from "../../app/components/map-shell";
+import type mapboxgl from "mapbox-gl";
 import {
   Dialog,
   DialogContent,
@@ -73,7 +75,7 @@ interface SidebarProps {
   handleCancelCustomAnnotation: () => void;
 
   // Map-related props
-  mapRef: React.RefObject<any>;
+  mapRef: React.RefObject<mapboxgl.Map | null>;
   showHeight: boolean;
   setShowHeight: (show: boolean | ((prev: boolean) => boolean)) => void;
   isGenerating: boolean;
@@ -95,9 +97,9 @@ interface SidebarProps {
   setDisclaimerOpen: (open: boolean) => void;
 
   // Annotation refs and functions
-  annotationsRef: React.RefObject<Record<string, any>>;
-  addExtrusionForAnnotation: (rec: any) => void;
-  removeExtrusionForAnnotation: (rec: any) => void;
+  annotationsRef: React.RefObject<Record<string, AnnotationRecord>>;
+  addExtrusionForAnnotation: (rec: AnnotationRecord) => void;
+  removeExtrusionForAnnotation: (rec: AnnotationRecord) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
