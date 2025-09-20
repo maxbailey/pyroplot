@@ -28,18 +28,31 @@ import {
 
 // Main annotation management hook
 export const useAnnotations = () => {
+  // Use selectors for better performance
+  const annotations = useAnnotationStore(annotationSelectors.annotations);
+  const audienceAreas = useAnnotationStore(annotationSelectors.audienceAreas);
+  const measurements = useAnnotationStore(annotationSelectors.measurements);
+  const restrictedAreas = useAnnotationStore(
+    annotationSelectors.restrictedAreas
+  );
+  const annotationMarkers = useAnnotationStore(
+    annotationSelectors.annotationMarkers
+  );
+  const showHeight = useAnnotationStore(annotationSelectors.showHeight);
+  const editingCustomAnnotation = useAnnotationStore(
+    annotationSelectors.editingCustomAnnotation
+  );
+
+  // Get counters from the counters selector
+  const counters = useAnnotationStore(annotationSelectors.counters);
   const {
-    annotations,
-    audienceAreas,
-    measurements,
-    restrictedAreas,
-    annotationMarkers,
-    fireworkCounter,
-    audienceCounter,
-    measurementCounter,
-    restrictedCounter,
-    showHeight,
-    editingCustomAnnotation,
+    firework: fireworkCounter,
+    audience: audienceCounter,
+    measurement: measurementCounter,
+    restricted: restrictedCounter,
+  } = counters;
+
+  const {
     addAnnotation,
     updateAnnotation,
     removeAnnotation,

@@ -27,8 +27,8 @@ export const useMapInitialization = () => {
 
     const map = storeInitializeMap(mapContainerRef.current);
 
-    // Set up event listeners
-    map.on("moveend", () => {
+    // Set up event listeners with proper cleanup
+    const handleMoveEnd = () => {
       if (map.isMoving()) return;
       setCamera({
         center: [map.getCenter().lng, map.getCenter().lat],
@@ -36,31 +36,28 @@ export const useMapInitialization = () => {
         bearing: map.getBearing(),
         pitch: map.getPitch(),
       });
-    });
+    };
 
-    map.on("dragstart", () => {
-      setDragging(true);
-    });
+    const handleDragStart = () => setDragging(true);
+    const handleDragEnd = () => setDragging(false);
+    const handleZoomStart = () => setZooming(true);
+    const handleZoomEnd = () => setZooming(false);
 
-    map.on("dragend", () => {
-      setDragging(false);
-    });
+    map.on("moveend", handleMoveEnd);
+    map.on("dragstart", handleDragStart);
+    map.on("dragend", handleDragEnd);
+    map.on("zoomstart", handleZoomStart);
+    map.on("zoomend", handleZoomEnd);
 
-    map.on("zoomstart", () => {
-      setZooming(true);
-    });
-
-    map.on("zoomend", () => {
-      setZooming(false);
-    });
-  }, [
-    mapRef,
-    storeInitializeMap,
-    setMapRef,
-    setCamera,
-    setDragging,
-    setZooming,
-  ]);
+    // Return cleanup function
+    return () => {
+      map.off("moveend", handleMoveEnd);
+      map.off("dragstart", handleDragStart);
+      map.off("dragend", handleDragEnd);
+      map.off("zoomstart", handleZoomStart);
+      map.off("zoomend", handleZoomEnd);
+    };
+  }, [mapRef, storeInitializeMap, setCamera, setDragging, setZooming]);
 
   const cleanup = useCallback(() => {
     if (mapRef) {
@@ -71,8 +68,11 @@ export const useMapInitialization = () => {
   }, [mapRef, setMapRef, setMapReady]);
 
   useEffect(() => {
-    initializeMap();
-    return cleanup;
+    const cleanupMap = initializeMap();
+    return () => {
+      if (cleanupMap) cleanupMap();
+      cleanup();
+    };
   }, [initializeMap, cleanup]);
 
   return {
@@ -86,10 +86,12 @@ export const useMapInitialization = () => {
 
 // Search functionality hook
 export const useSearch = () => {
+  // Use selectors for better performance
+  const searchQuery = useMapStore(mapSelectors.searchQuery);
+  const suggestions = useMapStore(mapSelectors.suggestions);
+  const activeIndex = useMapStore(mapSelectors.activeIndex);
+
   const {
-    searchQuery,
-    suggestions,
-    activeIndex,
     setSearchQuery,
     setSuggestions,
     setActiveIndex,
@@ -100,9 +102,15 @@ export const useSearch = () => {
 
   const searchSuggestions = useCallback(
     async (query: string) => {
-      await handleSearch(query);
+      try {
+        await handleSearch(query);
+      } catch (error) {
+        console.error("Search error:", error);
+        setSuggestions([]);
+        setActiveIndex(-1);
+      }
     },
-    [handleSearch]
+    [handleSearch, setSuggestions, setActiveIndex]
   );
 
   const selectSuggestion = useCallback(
@@ -111,7 +119,11 @@ export const useSearch = () => {
       text: string;
       center?: [number, number];
     }) => {
-      await handleSubmitOrSelect(suggestion.id);
+      try {
+        await handleSubmitOrSelect(suggestion.id);
+      } catch (error) {
+        console.error("Suggestion selection error:", error);
+      }
     },
     [handleSubmitOrSelect]
   );

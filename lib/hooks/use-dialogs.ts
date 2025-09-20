@@ -7,17 +7,21 @@ import { encodeStateToHash } from "../utils/serialization";
 
 // Main dialog management hook
 export const useDialogs = () => {
+  // Use selectors for better performance
+  const settingsOpen = useUIStore(uiSelectors.settingsOpen);
+  const customAnnotationOpen = useUIStore(uiSelectors.customAnnotationOpen);
+  const shareOpen = useUIStore(uiSelectors.shareOpen);
+  const disclaimerOpen = useUIStore(uiSelectors.disclaimerOpen);
+  const helpOpen = useUIStore(uiSelectors.helpOpen);
+  const clearAnnotationsOpen = useUIStore(uiSelectors.clearAnnotationsOpen);
+  const editingCustomAnnotation = useUIStore(
+    uiSelectors.editingCustomAnnotation
+  );
+  const customLabel = useUIStore(uiSelectors.customLabel);
+  const customColor = useUIStore(uiSelectors.customColor);
+  const showHeight = useUIStore(uiSelectors.showHeight);
+
   const {
-    settingsOpen,
-    customAnnotationOpen,
-    shareOpen,
-    disclaimerOpen,
-    helpOpen,
-    clearAnnotationsOpen,
-    editingCustomAnnotation,
-    customLabel,
-    customColor,
-    showHeight,
     setSettingsOpen,
     setCustomAnnotationOpen,
     setShareOpen,

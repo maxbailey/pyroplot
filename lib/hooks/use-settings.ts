@@ -4,14 +4,13 @@ import type { MeasurementUnit, SafetyDistance } from "@/lib/types";
 
 // Main settings hook
 export const useSettings = () => {
-  const {
-    projectName,
-    measurementUnit,
-    safetyDistance,
-    setProjectName,
-    setMeasurementUnit,
-    setSafetyDistance,
-  } = useSettingsStore();
+  // Use selectors for better performance
+  const projectName = useSettingsStore(settingsSelectors.projectName);
+  const measurementUnit = useSettingsStore(settingsSelectors.measurementUnit);
+  const safetyDistance = useSettingsStore(settingsSelectors.safetyDistance);
+
+  const { setProjectName, setMeasurementUnit, setSafetyDistance } =
+    useSettingsStore();
 
   return {
     projectName,
@@ -25,11 +24,17 @@ export const useSettings = () => {
 
 // Form handling hook
 export const useFormHandling = () => {
+  // Use selectors for better performance
+  const formProjectName = useSettingsStore(settingsSelectors.formProjectName);
+  const formMeasurementUnit = useSettingsStore(
+    settingsSelectors.formMeasurementUnit
+  );
+  const formSafetyDistance = useSettingsStore(
+    settingsSelectors.formSafetyDistance
+  );
+  const hasFormChanges = useSettingsStore(settingsSelectors.hasFormChanges);
+
   const {
-    formProjectName,
-    formMeasurementUnit,
-    formSafetyDistance,
-    hasFormChanges,
     setFormProjectName,
     setFormMeasurementUnit,
     setFormSafetyDistance,
