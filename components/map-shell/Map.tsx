@@ -34,11 +34,6 @@ export const Map: React.FC<MapProps> = ({
         />
       </div>
 
-      <DisclaimerDialog
-        disclaimerOpen={disclaimerOpen}
-        setDisclaimerOpen={setDisclaimerOpen}
-      />
-
       {/* Floating Action Button */}
       <button
         type="button"
@@ -61,6 +56,12 @@ export const Map: React.FC<MapProps> = ({
           <path d="M12 17h.01" />
         </svg>
       </button>
+
+      {/* Disclaimer Dialog */}
+      <DisclaimerDialog
+        disclaimerOpen={disclaimerOpen}
+        setDisclaimerOpen={setDisclaimerOpen}
+      />
 
       {/* Help Dialog */}
       <HelpDialog helpOpen={helpOpen} setHelpOpen={setHelpOpen} />
