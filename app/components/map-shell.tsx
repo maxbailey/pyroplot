@@ -7,6 +7,7 @@ import {
   useMapContext,
   useAnnotationContext,
   useSettingsContext,
+  useUIContext,
 } from "@/lib/contexts";
 import { useSettingsStore } from "@/lib/store";
 import {
@@ -57,6 +58,9 @@ export function MapShell() {
 
   // Get settings context for measurement unit and safety distance
   const { measurementUnit, safetyDistance } = useSettingsContext();
+
+  // Get UI context for custom annotation dialog
+  const { handleCustomAnnotationClick } = useUIContext();
 
   // Create refs for annotation management (these are still needed for some operations)
   const annotationsRef = useRef<Record<string, AnnotationRecord>>({});
@@ -1238,6 +1242,37 @@ export function MapShell() {
           .setLngLat([lngLat.lng, lngLat.lat])
           .addTo(mapInstance);
 
+        // Track if the marker was dragged to prevent dialog opening on drag-end
+        let wasDragged = false;
+        let dragStartTime = 0;
+
+        // Add drag start handler
+        const handleDragStart = () => {
+          wasDragged = true;
+          dragStartTime = Date.now();
+        };
+
+        // Add click handler - only open dialog if it wasn't dragged
+        const handleClick = (evt: MouseEvent) => {
+          evt.preventDefault();
+          evt.stopPropagation();
+
+          // Only open dialog if it wasn't dragged or was a very quick drag (click)
+          const dragDuration = Date.now() - dragStartTime;
+          if (!wasDragged || dragDuration < 200) {
+            handleCustomAnnotationClick(id, {
+              label: "Custom",
+              color: "#8B5CF6",
+            });
+          }
+
+          // Reset drag state
+          wasDragged = false;
+        };
+
+        marker.getElement().addEventListener("click", handleClick);
+        marker.on("dragstart", handleDragStart);
+
         // Add right-click handler to remove
         marker.getElement().addEventListener("contextmenu", (evt) => {
           evt.preventDefault();
@@ -1346,8 +1381,16 @@ export function MapShell() {
             });
           }
         };
+
+        // Add drag handlers - only update text, don't open dialog
         marker.on("drag", updateCustomText);
         marker.on("dragend", updateCustomText);
+
+        // Open dialog immediately after creation (drag & drop)
+        handleCustomAnnotationClick(id, {
+          label: "Custom",
+          color: "#8B5CF6",
+        });
 
         console.log("Created custom annotation:", id);
       }

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import mapboxgl from "mapbox-gl";
 import type { AnnotationRecord } from "@/lib/types";
 import { ANNOTATION_PALETTE } from "@/lib/constants";
 import { ShareDialog } from "./dialogs/share-dialog";
@@ -15,6 +16,7 @@ import {
   useUIContext,
 } from "@/lib/contexts";
 import { usePdfGenerator } from "../pdf-generator/usePdfGenerator";
+import { useCustomAnnotationLogic } from "@/lib/hooks";
 
 interface SidebarProps {
   // Only essential props that can't be provided via context
@@ -63,6 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setCustomLabel,
     customColor,
     setCustomColor,
+    editingCustomAnnotation,
     setEditingCustomAnnotation,
     showHeight,
     setShowHeight,
@@ -81,6 +84,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const { projectName, measurementUnit, safetyDistance } = useSettingsContext();
 
+  // Get custom annotations hook
+  const { updateCustomAnnotation } = useCustomAnnotationLogic();
+
   // Get PDF generator hook
   const { isGenerating, generateSitePlanPdf } = usePdfGenerator({
     mapRef,
@@ -94,9 +100,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   });
 
   // Custom annotation handlers
-  const handleSaveCustomAnnotation = () => {
-    // This would need to be implemented based on the custom annotation logic
-    console.log("Save custom annotation");
+  const handleSaveCustomAnnotation = (
+    id: string,
+    updates: { label: string; color: string }
+  ) => {
+    updateCustomAnnotation(id, updates, mapRef, annotationsRef);
+
+    // Close dialog and reset form
+    setCustomAnnotationOpen(false);
+    setEditingCustomAnnotation(null);
+    setCustomLabel("");
+    setCustomColor("#8B5CF6");
   };
 
   const handleCancelCustomAnnotation = () => {
@@ -267,8 +281,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             customColor={customColor}
             setCustomColor={setCustomColor}
             handleFormChange={() => handleFormChange("", "")}
-            handleSaveCustomAnnotation={handleSaveCustomAnnotation}
-            handleCancelCustomAnnotation={handleCancelCustomAnnotation}
+            onSave={handleSaveCustomAnnotation}
+            onCancel={handleCancelCustomAnnotation}
+            editingCustomAnnotation={editingCustomAnnotation}
           />
 
           {/* Reset Camera Button */}

@@ -180,7 +180,10 @@ export const useUIStore = create<UIStore>()(
     handleCustomAnnotationClick: (annotationId) => {
       // This will be implemented by the hook that has access to annotation data
       console.log("Handling custom annotation click:", annotationId);
-      set({ editingCustomAnnotation: annotationId });
+      set({
+        editingCustomAnnotation: annotationId,
+        customAnnotationOpen: true,
+      });
     },
 
     // Display state

@@ -38,6 +38,9 @@ export {
   useCustomAnnotationForm,
 } from "./use-dialogs";
 
+// Custom annotation business logic hook
+export { useCustomAnnotations as useCustomAnnotationLogic } from "./use-custom-annotations";
+
 // Re-export store hooks for convenience
 export {
   useMapStore,

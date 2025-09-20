@@ -51,7 +51,10 @@ interface UIContextValue {
   // Share dialog actions
   openShareDialog: () => void;
   handleCopyUrl: () => Promise<void>;
-  handleCustomAnnotationClick: (id: string) => void;
+  handleCustomAnnotationClick: (
+    id: string,
+    annotation?: { label: string; color: string }
+  ) => void;
 }
 
 // Create the context
@@ -107,10 +110,15 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [storeHandleCopyUrl]);
 
   const handleCustomAnnotationClick = useCallback(
-    (id: string) => {
+    (id: string, annotation?: { label: string; color: string }) => {
+      // Set the form values if annotation data is provided
+      if (annotation) {
+        setCustomLabel(annotation.label);
+        setCustomColor(annotation.color);
+      }
       storeHandleCustomAnnotationClick(id);
     },
-    [storeHandleCustomAnnotationClick]
+    [storeHandleCustomAnnotationClick, setCustomLabel, setCustomColor]
   );
 
   const resetCustomAnnotationForm = useCallback(() => {

@@ -17,8 +17,9 @@ interface CustomAnnotationDialogProps {
   customColor: string;
   setCustomColor: (color: string) => void;
   handleFormChange: () => void;
-  handleSaveCustomAnnotation: () => void;
-  handleCancelCustomAnnotation: () => void;
+  onSave: (id: string, updates: { label: string; color: string }) => void;
+  onCancel: () => void;
+  editingCustomAnnotation: string | null;
 }
 
 export const CustomAnnotationDialog: React.FC<CustomAnnotationDialogProps> = ({
@@ -29,9 +30,25 @@ export const CustomAnnotationDialog: React.FC<CustomAnnotationDialogProps> = ({
   customColor,
   setCustomColor,
   handleFormChange,
-  handleSaveCustomAnnotation,
-  handleCancelCustomAnnotation,
+  onSave,
+  onCancel,
+  editingCustomAnnotation,
 }) => {
+  const handleSave = () => {
+    if (editingCustomAnnotation) {
+      onSave(editingCustomAnnotation, {
+        label: customLabel,
+        color: customColor,
+      });
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSave();
+    }
+  };
   // Color presets for custom annotations
   const colorPresets = [
     { color: "#EF4444", name: "Red" },
@@ -57,7 +74,11 @@ export const CustomAnnotationDialog: React.FC<CustomAnnotationDialogProps> = ({
             <label className="text-sm text-muted-foreground">Label</label>
             <Input
               value={customLabel}
-              onChange={(e) => setCustomLabel(e.target.value)}
+              onChange={(e) => {
+                setCustomLabel(e.target.value);
+                handleFormChange();
+              }}
+              onKeyDown={handleKeyDown}
               placeholder="Enter label"
             />
           </div>
@@ -101,14 +122,14 @@ export const CustomAnnotationDialog: React.FC<CustomAnnotationDialogProps> = ({
         <DialogFooter>
           <button
             type="button"
-            onClick={handleCancelCustomAnnotation}
+            onClick={onCancel}
             className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
           >
             Cancel
           </button>
           <button
             type="button"
-            onClick={handleSaveCustomAnnotation}
+            onClick={handleSave}
             className="inline-flex items-center justify-center rounded-md bg-brand text-white px-3 py-2 text-sm hover:opacity-90"
           >
             Save
