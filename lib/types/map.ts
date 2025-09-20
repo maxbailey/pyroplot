@@ -16,7 +16,7 @@ export interface SearchSuggestion {
   text: string;
   place_name?: string;
   center: [number, number];
-  context?: any;
+  context?: Record<string, unknown>;
 }
 
 export interface MapboxSearchResponse {
@@ -26,7 +26,7 @@ export interface MapboxSearchResponse {
     place_formatted?: string;
     place_name?: string;
     coordinates?: [number, number];
-    context?: any;
+    context?: Record<string, unknown>;
   }>;
 }
 

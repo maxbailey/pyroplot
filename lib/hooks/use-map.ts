@@ -329,7 +329,7 @@ export const useMapEvents = () => {
   const { mapRef } = useMapStore();
 
   const addEventListener = useCallback(
-    (event: string, handler: (e: any) => void) => {
+    (event: string, handler: (e: unknown) => void) => {
       const map = mapRef.current;
       if (!map) return;
 
@@ -340,7 +340,7 @@ export const useMapEvents = () => {
   );
 
   const removeEventListener = useCallback(
-    (event: string, handler: (e: any) => void) => {
+    (event: string, handler: (e: unknown) => void) => {
       const map = mapRef.current;
       if (!map) return;
 

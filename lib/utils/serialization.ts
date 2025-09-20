@@ -282,18 +282,28 @@ export async function decodeStateFromHash(
  * @param state - State to validate
  * @returns True if valid, false otherwise
  */
-export function validateSerializedState(state: any): state is SerializedState {
+export function validateSerializedState(
+  state: unknown
+): state is SerializedState {
   return !!(
     state &&
     typeof state === "object" &&
-    state.camera &&
-    Array.isArray(state.fireworks) &&
-    Array.isArray(state.custom) &&
-    Array.isArray(state.audiences) &&
-    Array.isArray(state.measurements) &&
-    Array.isArray(state.restricted) &&
-    typeof state.showHeight === "boolean" &&
-    typeof state.v === "number"
+    state !== null &&
+    "camera" in state &&
+    "fireworks" in state &&
+    "custom" in state &&
+    "audiences" in state &&
+    "measurements" in state &&
+    "restricted" in state &&
+    "showHeight" in state &&
+    "v" in state &&
+    Array.isArray((state as Record<string, unknown>).fireworks) &&
+    Array.isArray((state as Record<string, unknown>).custom) &&
+    Array.isArray((state as Record<string, unknown>).audiences) &&
+    Array.isArray((state as Record<string, unknown>).measurements) &&
+    Array.isArray((state as Record<string, unknown>).restricted) &&
+    typeof (state as Record<string, unknown>).showHeight === "boolean" &&
+    typeof (state as Record<string, unknown>).v === "number"
   );
 }
 
@@ -302,14 +312,15 @@ export function validateSerializedState(state: any): state is SerializedState {
  * @param state - State to migrate
  * @returns Migrated state
  */
-export function migrateState(state: any): SerializedState {
+export function migrateState(state: unknown): SerializedState {
   // Handle version 0 (no version field)
-  if (!state.v) {
+  if (!state || typeof state !== "object" || !("v" in state)) {
+    const stateObj = state as Record<string, unknown>;
     return {
-      ...state,
+      ...stateObj,
       v: 1,
-      custom: state.custom || [],
-    };
+      custom: stateObj.custom || [],
+    } as SerializedState;
   }
 
   // Handle future versions here
