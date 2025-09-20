@@ -68,6 +68,49 @@ export function MapShell() {
   const measurementsRef = useRef<Record<string, MeasurementRecord>>({});
   const restrictedAreasRef = useRef<Record<string, RestrictedRecord>>({});
 
+  // Centralized ID management system
+  const nextIdRef = useRef<number>(1);
+  const usedIdsRef = useRef<Set<number>>(new Set());
+
+  // Function to get the next sequential ID
+  const getNextId = () => {
+    // Find the next available ID
+    while (usedIdsRef.current.has(nextIdRef.current)) {
+      nextIdRef.current++;
+    }
+
+    const id = nextIdRef.current;
+    usedIdsRef.current.add(id);
+    nextIdRef.current++;
+
+    console.log(
+      "getNextId() returned:",
+      id,
+      "nextIdRef:",
+      nextIdRef.current,
+      "usedIds:",
+      Array.from(usedIdsRef.current)
+    );
+    return id;
+  };
+
+  // Function to release an ID when an annotation is removed
+  const releaseId = (id: number) => {
+    usedIdsRef.current.delete(id);
+    // If this was the highest ID, we can reset the counter
+    if (id === nextIdRef.current - 1) {
+      nextIdRef.current = id;
+    }
+    console.log(
+      "releaseId() released:",
+      id,
+      "nextIdRef:",
+      nextIdRef.current,
+      "usedIds:",
+      Array.from(usedIdsRef.current)
+    );
+  };
+
   // Note: We don't sync refs with context state because we manage them locally
   // The refs are used for local operations and contain additional data not in the store
 
@@ -165,6 +208,10 @@ export function MapShell() {
           },
         });
 
+        // Get the next sequential ID
+        const annotationId = getNextId();
+        console.log("Audience area created with ID:", annotationId);
+
         // Create label marker with proper styling
         const label = document.createElement("div");
         label.className =
@@ -178,6 +225,8 @@ export function MapShell() {
           evt.preventDefault();
           // Remove from store
           removeAudienceArea(id);
+          // Release the ID
+          releaseId(annotationId);
           // Remove Mapbox layers and markers
           try {
             if (mapInstance.getLayer(`${id}-fill`))
@@ -197,11 +246,7 @@ export function MapShell() {
 
         const title = document.createElement("div");
         title.className = "font-medium leading-none";
-        title.textContent = `Audience Area ${
-          audienceAreasRef.current
-            ? Object.keys(audienceAreasRef.current).length + 1
-            : 1
-        }`;
+        title.textContent = "Audience";
 
         const dims = document.createElement("div");
         dims.setAttribute("data-role", "dims");
@@ -246,7 +291,7 @@ export function MapShell() {
         // Store in context
         const audienceRecord: AudienceRecord = {
           type: "audience",
-          number: Object.keys(audienceAreasRef.current).length + 1,
+          number: annotationId,
           id,
           sourceId,
           fillLayerId: `${id}-fill`,
@@ -444,6 +489,9 @@ export function MapShell() {
           },
         });
 
+        // Get the next sequential ID
+        const annotationId = getNextId();
+
         // Create label marker with proper styling
         const label = document.createElement("div");
         label.className =
@@ -457,6 +505,8 @@ export function MapShell() {
           evt.preventDefault();
           // Remove from store
           removeFireworkAnnotation(id);
+          // Release the ID
+          releaseId(annotationId);
           // Remove Mapbox layers and markers
           try {
             if (mapInstance.getLayer(`${id}-fill`))
@@ -499,7 +549,7 @@ export function MapShell() {
         // Store in context
         const annotationRecord: AnnotationRecord = {
           type: "firework",
-          number: Object.keys(annotationsRef.current).length + 1,
+          number: annotationId,
           id,
           inches: 50, // 50ft radius
           label: "Firework",
@@ -590,6 +640,9 @@ export function MapShell() {
           },
         });
 
+        // Get the next sequential ID
+        const annotationId = getNextId();
+
         // Create label marker with proper styling
         const label = document.createElement("div");
         label.className =
@@ -603,6 +656,8 @@ export function MapShell() {
           evt.preventDefault();
           // Remove from store
           removeFireworkAnnotation(id);
+          // Release the ID
+          releaseId(annotationId);
           // Remove Mapbox layers and markers
           try {
             if (mapInstance.getLayer(`${id}-fill`))
@@ -645,7 +700,7 @@ export function MapShell() {
         // Store in context
         const annotationRecord: AnnotationRecord = {
           type: "firework",
-          number: Object.keys(annotationsRef.current).length + 1,
+          number: annotationId,
           id,
           inches: item.inches,
           label: item.label,
@@ -741,6 +796,9 @@ export function MapShell() {
           },
         });
 
+        // Get the next sequential ID
+        const annotationId = getNextId();
+
         // Create label marker at center of line
         const centerLng = (points[0][0] + points[1][0]) / 2;
         const centerLat = (points[0][1] + points[1][1]) / 2;
@@ -757,6 +815,8 @@ export function MapShell() {
           evt.preventDefault();
           // Remove from store
           removeMeasurement(id);
+          // Release the ID
+          releaseId(annotationId);
           // Remove Mapbox layers and markers
           try {
             if (mapInstance.getLayer(`${id}-line`))
@@ -875,7 +935,7 @@ export function MapShell() {
         // Store in context
         const measurementRecord: MeasurementRecord = {
           type: "measurement",
-          number: Object.keys(measurementsRef.current).length + 1,
+          number: annotationId,
           id,
           sourceId,
           lineLayerId: `${id}-line`,
@@ -991,6 +1051,10 @@ export function MapShell() {
           },
         });
 
+        // Get the next sequential ID
+        const annotationId = getNextId();
+        console.log("Restricted area created with ID:", annotationId);
+
         // Create label marker with proper styling
         const label = document.createElement("div");
         label.className =
@@ -1004,6 +1068,8 @@ export function MapShell() {
           evt.preventDefault();
           // Remove from store
           removeRestrictedArea(id);
+          // Release the ID
+          releaseId(annotationId);
           // Remove Mapbox layers and markers
           try {
             if (mapInstance.getLayer(`${id}-fill`))
@@ -1068,7 +1134,7 @@ export function MapShell() {
         // Store in context
         const restrictedRecord: RestrictedRecord = {
           type: "restricted",
-          number: Object.keys(restrictedAreasRef.current).length + 1,
+          number: annotationId,
           id,
           sourceId,
           fillLayerId: `${id}-fill`,
@@ -1233,120 +1299,72 @@ export function MapShell() {
           .toString(36)
           .slice(2)}`;
 
-        // Create default Mapbox marker with custom color
+        // Get the next sequential ID
+        const annotationId = getNextId();
+
+        // Create custom label element (like other annotation types)
+        const label = document.createElement("div");
+        label.className =
+          "rounded-md px-2 py-1 text-xs shadow bg-background/50 backdrop-blur-sm border border-border text-center";
+        label.style.cursor = "move";
+        label.style.userSelect = "none";
+        label.style.pointerEvents = "auto";
+        label.style.backgroundColor = "#8B5CF6";
+        label.style.color = "white";
+        label.style.fontWeight = "bold";
+        label.textContent = "Custom";
+
+        // Add context menu for removal (like other annotation types)
+        label.addEventListener("contextmenu", (evt) => {
+          evt.preventDefault();
+          evt.stopPropagation();
+          console.log("Custom annotation right-clicked, removing:", id);
+          // Remove from store
+          removeCustomAnnotation(id);
+          // Release the ID
+          releaseId(annotationId);
+          // Remove Mapbox markers
+          try {
+            marker.remove();
+            console.log("Custom annotation marker removed");
+          } catch (error) {
+            console.error("Error removing custom annotation marker:", error);
+          }
+          // Remove from local ref
+          delete annotationsRef.current[id];
+          console.log("Custom annotation removed from refs");
+        });
+
+        // Add click handler to open dialog
+        label.addEventListener("click", (evt) => {
+          evt.preventDefault();
+          evt.stopPropagation();
+          handleCustomAnnotationClick(id, {
+            label: "Custom",
+            color: "#8B5CF6",
+          });
+        });
+
+        // Create Mapbox marker with custom element
         const marker = new mapboxgl.Marker({
-          color: "#8B5CF6", // Default custom color
+          element: label,
           draggable: true,
-          clickTolerance: 5, // Allow 5px movement before considering it a drag
         })
           .setLngLat([lngLat.lng, lngLat.lat])
           .addTo(mapInstance);
 
-        // Track if the marker was dragged to prevent dialog opening on drag-end
-        let wasDragged = false;
-        let dragStartTime = 0;
-
-        // Add drag start handler
-        const handleDragStart = () => {
-          wasDragged = true;
-          dragStartTime = Date.now();
-        };
-
-        // Add click handler - only open dialog if it wasn't dragged
-        const handleClick = (evt: MouseEvent) => {
-          evt.preventDefault();
-          evt.stopPropagation();
-
-          // Only open dialog if it wasn't dragged or was a very quick drag (click)
-          const dragDuration = Date.now() - dragStartTime;
-          if (!wasDragged || dragDuration < 200) {
-            handleCustomAnnotationClick(id, {
-              label: "Custom",
-              color: "#8B5CF6",
-            });
-          }
-
-          // Reset drag state
-          wasDragged = false;
-        };
-
-        marker.getElement().addEventListener("click", handleClick);
-        marker.on("dragstart", handleDragStart);
-
-        // Add right-click handler to remove
-        marker.getElement().addEventListener("contextmenu", (evt) => {
-          evt.preventDefault();
-          // Remove from store
-          removeCustomAnnotation(id);
-          // Remove Mapbox layers and markers
-          try {
-            marker.remove();
-          } catch {}
-          // Remove from local ref
-          delete annotationsRef.current[id];
-        });
-
-        // Create text element for emoji and label combined
-        const textSourceId = `${id}-text-src`;
-
-        // Combined emoji and label text
-        const textFeature = {
-          type: "Feature" as const,
-          geometry: {
-            type: "Point" as const,
-            coordinates: [lngLat.lng, lngLat.lat],
-          },
-          properties: {
-            text: "Custom",
-          },
-        };
-
-        // Add text source and layer
-        mapInstance.addSource(textSourceId, {
-          type: "geojson",
-          data: {
-            type: "FeatureCollection",
-            features: [textFeature],
-          },
-        });
-
-        mapInstance.addLayer({
-          id: `${id}-text`,
-          type: "symbol",
-          source: textSourceId,
-          layout: {
-            "text-field": ["get", "text"],
-            "text-font": [
-              "Noto Color Emoji",
-              "Apple Color Emoji",
-              "Segoe UI Emoji",
-              "Open Sans Bold",
-              "Arial Unicode MS Bold",
-            ],
-            "text-size": 14,
-            "text-anchor": "bottom",
-            "text-offset": [0, -2.8],
-          },
-          paint: {
-            "text-color": "#ffffff",
-            "text-halo-color": "#000000",
-            "text-halo-width": 2,
-          },
-        });
-
         // Store in context
         const annotationRecord: AnnotationRecord = {
           type: "custom",
-          number: Object.keys(annotationsRef.current).length + 1,
+          number: annotationId,
           id,
           inches: 0, // Not applicable for custom
           label: "Custom",
           color: "#8B5CF6",
           marker,
-          sourceId: textSourceId, // Store text source ID
-          fillLayerId: `${id}-text`, // Store text layer ID
-          lineLayerId: `${id}-text`, // Store text layer ID (same as fillLayerId)
-          textSourceId, // Store text source ID
+          sourceId: "", // No source for custom annotations
+          fillLayerId: "", // No layers for custom annotations
+          lineLayerId: "", // No layers for custom annotations
         };
 
         // Add to store
@@ -1354,37 +1372,6 @@ export function MapShell() {
 
         // Store in ref for local access
         annotationsRef.current[id] = annotationRecord;
-
-        // Add drag handler to update text position
-        const updateCustomText = () => {
-          const pos = marker.getLngLat();
-
-          // Update text position
-          const textSrc = mapInstance.getSource(
-            textSourceId
-          ) as mapboxgl.GeoJSONSource;
-          if (textSrc) {
-            textSrc.setData({
-              type: "FeatureCollection",
-              features: [
-                {
-                  type: "Feature" as const,
-                  geometry: {
-                    type: "Point" as const,
-                    coordinates: [pos.lng, pos.lat],
-                  },
-                  properties: {
-                    text: "Custom",
-                  },
-                },
-              ],
-            });
-          }
-        };
-
-        // Add drag handlers - only update text, don't open dialog
-        marker.on("drag", updateCustomText);
-        marker.on("dragend", updateCustomText);
 
         // Open dialog immediately after creation (drag & drop)
         handleCustomAnnotationClick(id, {
