@@ -39,6 +39,16 @@ interface AnnotationActions {
   removeAnnotation: (id: string) => void;
   clearAllAnnotations: () => void;
 
+  // Specific annotation type operations
+  addFireworkAnnotation: (
+    annotation: Omit<AnnotationRecord, "id" | "type" | "number">
+  ) => void;
+  addCustomAnnotation: (
+    annotation: Omit<AnnotationRecord, "id" | "type" | "number">
+  ) => void;
+  removeFireworkAnnotation: (id: string) => void;
+  removeCustomAnnotation: (id: string) => void;
+
   // CRUD operations for audience areas
   addAudienceArea: (area: AudienceRecord) => void;
   updateAudienceArea: (id: string, updates: Partial<AudienceRecord>) => void;
@@ -129,6 +139,69 @@ export const useAnnotationStore = create<AnnotationStore>()(
       }),
 
     clearAllAnnotations: () => set({ annotations: {} }),
+
+    // Specific annotation type operations
+    addFireworkAnnotation: (annotationData) => {
+      const state = get();
+      const id = `firework-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+      const number = state.getNextAnnotationNumber();
+      const annotation: AnnotationRecord = {
+        ...annotationData,
+        id,
+        type: "firework",
+        number,
+      };
+      set((state) => ({
+        annotations: { ...state.annotations, [id]: annotation },
+        fireworkCounter: state.fireworkCounter + 1,
+      }));
+    },
+
+    addCustomAnnotation: (annotationData) => {
+      const state = get();
+      const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const number = state.getNextAnnotationNumber();
+      const annotation: AnnotationRecord = {
+        ...annotationData,
+        id,
+        type: "custom",
+        number,
+      };
+      set((state) => ({
+        annotations: { ...state.annotations, [id]: annotation },
+      }));
+    },
+
+    removeFireworkAnnotation: (id) => {
+      const state = get();
+      const annotation = state.annotations[id];
+      if (annotation && annotation.type === "firework") {
+        set((state) => {
+          const { [id]: removed, ...rest } = state.annotations;
+          return {
+            annotations: rest,
+            fireworkCounter: Math.max(0, state.fireworkCounter - 1),
+          };
+        });
+        // Renumber remaining annotations
+        state.renumberAnnotations();
+      }
+    },
+
+    removeCustomAnnotation: (id) => {
+      const state = get();
+      const annotation = state.annotations[id];
+      if (annotation && annotation.type === "custom") {
+        set((state) => {
+          const { [id]: removed, ...rest } = state.annotations;
+          return { annotations: rest };
+        });
+        // Renumber remaining annotations
+        state.renumberAnnotations();
+      }
+    },
 
     // CRUD operations for audience areas
     addAudienceArea: (area) =>
@@ -271,8 +344,19 @@ export const useAnnotationStore = create<AnnotationStore>()(
       }),
 
     renumberAnnotations: () => {
-      // TODO: Implement renumbering logic
-      console.log("Renumbering annotations...");
+      const state = get();
+      const allAnnotations = Object.values(state.annotations);
+      const sortedAnnotations = allAnnotations.sort(
+        (a, b) => a.number - b.number
+      );
+
+      const renumberedAnnotations: Record<string, AnnotationRecord> = {};
+      sortedAnnotations.forEach((annotation, index) => {
+        const updatedAnnotation = { ...annotation, number: index + 1 };
+        renumberedAnnotations[annotation.id] = updatedAnnotation;
+      });
+
+      set({ annotations: renumberedAnnotations });
     },
 
     // Utility actions

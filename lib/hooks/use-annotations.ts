@@ -44,6 +44,10 @@ export const useAnnotations = () => {
     updateAnnotation,
     removeAnnotation,
     clearAllAnnotations,
+    addFireworkAnnotation,
+    addCustomAnnotation,
+    removeFireworkAnnotation,
+    removeCustomAnnotation,
     addAudienceArea,
     updateAudienceArea,
     removeAudienceArea,
@@ -111,6 +115,10 @@ export const useAnnotations = () => {
     updateAnnotation,
     removeAnnotation,
     clearAllAnnotations,
+    addFireworkAnnotation,
+    addCustomAnnotation,
+    removeFireworkAnnotation,
+    removeCustomAnnotation,
     addAudienceArea,
     updateAudienceArea,
     removeAudienceArea,
@@ -145,9 +153,8 @@ export const useAnnotations = () => {
 // Firework annotation hook
 export const useFireworkAnnotations = () => {
   const {
-    addAnnotation,
-    removeAnnotation,
-    incrementCounter,
+    addFireworkAnnotation: storeAddFireworkAnnotation,
+    removeFireworkAnnotation: storeRemoveFireworkAnnotation,
     getNextAnnotationNumber,
   } = useAnnotations();
 
@@ -175,26 +182,25 @@ export const useFireworkAnnotations = () => {
         extrusionLayerId: `firework-extrude-${id}`,
       };
 
-      incrementCounter("firework");
       return annotation;
     },
-    [addAnnotation, getNextAnnotationNumber, incrementCounter]
+    [getNextAnnotationNumber]
   );
 
   const addFireworkAnnotation = useCallback(
-    (annotation: AnnotationRecord) => {
-      if (validateAnnotation(annotation)) {
-        addAnnotation(annotation);
+    (annotationData: Omit<AnnotationRecord, "id" | "type" | "number">) => {
+      if (validateAnnotation(annotationData as AnnotationRecord)) {
+        storeAddFireworkAnnotation(annotationData);
       }
     },
-    [addAnnotation]
+    [storeAddFireworkAnnotation]
   );
 
   const removeFireworkAnnotation = useCallback(
     (id: string) => {
-      removeAnnotation(id);
+      storeRemoveFireworkAnnotation(id);
     },
-    [removeAnnotation]
+    [storeRemoveFireworkAnnotation]
   );
 
   return {
@@ -207,9 +213,8 @@ export const useFireworkAnnotations = () => {
 // Custom annotation hook
 export const useCustomAnnotations = () => {
   const {
-    addAnnotation,
-    removeAnnotation,
-    incrementCounter,
+    addCustomAnnotation: storeAddCustomAnnotation,
+    removeCustomAnnotation: storeRemoveCustomAnnotation,
     getNextAnnotationNumber,
   } = useAnnotations();
 
@@ -239,26 +244,25 @@ export const useCustomAnnotations = () => {
         description,
       };
 
-      incrementCounter("custom");
       return annotation;
     },
-    [addAnnotation, getNextAnnotationNumber, incrementCounter]
+    [getNextAnnotationNumber]
   );
 
   const addCustomAnnotation = useCallback(
-    (annotation: AnnotationRecord) => {
-      if (validateAnnotation(annotation)) {
-        addAnnotation(annotation);
+    (annotationData: Omit<AnnotationRecord, "id" | "type" | "number">) => {
+      if (validateAnnotation(annotationData as AnnotationRecord)) {
+        storeAddCustomAnnotation(annotationData);
       }
     },
-    [addAnnotation]
+    [storeAddCustomAnnotation]
   );
 
   const removeCustomAnnotation = useCallback(
     (id: string) => {
-      removeAnnotation(id);
+      storeRemoveCustomAnnotation(id);
     },
-    [removeAnnotation]
+    [storeRemoveCustomAnnotation]
   );
 
   return {
