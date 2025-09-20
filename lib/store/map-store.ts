@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import mapboxgl from "mapbox-gl";
+import { mapboxgl } from "../mapbox-init";
 import type { MapCamera, SearchSuggestion } from "../types";
 import { MAP_CONFIG, MAP_INTERACTION, MAPBOX_ENDPOINTS } from "../constants";
 

@@ -73,10 +73,7 @@ interface MapContextValue {
   ) => (() => void) | undefined;
   removeEventListener: (event: string, handler: (e: unknown) => void) => void;
 
-  // Map initialization
-  mapContainerRef: React.RefObject<HTMLDivElement | null>;
-  initializeMap: () => void;
-  cleanup: () => void;
+  // Map initialization (handled by Map component)
 }
 
 // Create the context
@@ -111,8 +108,7 @@ export const MapProvider: React.FC<{ children: React.ReactNode }> = ({
     flyToLocation,
   } = useMapStore();
 
-  // Get hooks
-  const { mapContainerRef, initializeMap, cleanup } = useMapInitialization();
+  // Get hooks (mapContainerRef now handled by Map component)
 
   const { searchSuggestions, selectSuggestion, handleKeyDown } = useSearch();
 
@@ -222,10 +218,7 @@ export const MapProvider: React.FC<{ children: React.ReactNode }> = ({
       addEventListener,
       removeEventListener,
 
-      // Map initialization
-      mapContainerRef,
-      initializeMap,
-      cleanup,
+      // Map initialization (handled by Map component)
     }),
     [
       mapRef,
@@ -255,9 +248,6 @@ export const MapProvider: React.FC<{ children: React.ReactNode }> = ({
       flyToLocationMemo,
       addEventListener,
       removeEventListener,
-      mapContainerRef,
-      initializeMap,
-      cleanup,
     ]
   );
 
@@ -317,8 +307,6 @@ export const useMapActions = () => {
     flyToLocation,
     addEventListener,
     removeEventListener,
-    initializeMap,
-    cleanup,
   } = useMapContext();
   return {
     setMapRef,
@@ -338,7 +326,5 @@ export const useMapActions = () => {
     flyToLocation,
     addEventListener,
     removeEventListener,
-    initializeMap,
-    cleanup,
   };
 };

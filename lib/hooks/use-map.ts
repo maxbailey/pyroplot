@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
-import mapboxgl from "mapbox-gl";
+import { mapboxgl } from "@/lib/mapbox-init";
 import { useMapStore, mapSelectors } from "@/lib/store";
 import { MAP_CONFIG, MAPBOX_ENDPOINTS } from "@/lib/constants";
 import type {
@@ -74,6 +74,36 @@ export const useMapInitialization = () => {
       cleanup();
     };
   }, [initializeMap, cleanup]);
+
+  // Auto-zoom to current location
+  useEffect(() => {
+    if (!isMapReady || !mapRef) return;
+
+    // If a shared state hash is present, skip geolocation to avoid overriding the saved camera
+    try {
+      const hasShared = new URLSearchParams(
+        (window.location.hash || "").replace(/^#?/, "")
+      ).has("s");
+      if (hasShared) return;
+    } catch {}
+
+    if (!("geolocation" in navigator)) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        mapRef!.flyTo({
+          center: [longitude, latitude],
+          zoom: 16,
+          pitch: 30,
+          bearing: 0,
+          essential: true,
+        });
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, [isMapReady, mapRef]);
 
   return {
     mapContainerRef,

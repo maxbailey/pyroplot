@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import mapboxgl from "mapbox-gl";
+import { mapboxgl } from "@/lib/mapbox-init";
 import { useAnnotationStore, annotationSelectors } from "@/lib/store";
 import {
   createAnnotationId,
@@ -43,14 +43,19 @@ export const useAnnotations = () => {
     annotationSelectors.editingCustomAnnotation
   );
 
-  // Get counters from the counters selector
-  const counters = useAnnotationStore(annotationSelectors.counters);
-  const {
-    firework: fireworkCounter,
-    audience: audienceCounter,
-    measurement: measurementCounter,
-    restricted: restrictedCounter,
-  } = counters;
+  // Use individual counter selectors for better performance and hydration safety
+  const fireworkCounter = useAnnotationStore(
+    annotationSelectors.fireworkCounter
+  );
+  const audienceCounter = useAnnotationStore(
+    annotationSelectors.audienceCounter
+  );
+  const measurementCounter = useAnnotationStore(
+    annotationSelectors.measurementCounter
+  );
+  const restrictedCounter = useAnnotationStore(
+    annotationSelectors.restrictedCounter
+  );
 
   const {
     addAnnotation,

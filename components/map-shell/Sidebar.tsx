@@ -63,7 +63,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setCustomLabel,
     customColor,
     setCustomColor,
-    editingCustomAnnotation,
     setEditingCustomAnnotation,
     showHeight,
     setShowHeight,

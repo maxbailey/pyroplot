@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { HelpDialog } from "./dialogs/help-dialog";
-import { useMapContext, useUIContext } from "@/lib/contexts";
+import { useUIContext } from "@/lib/contexts";
 import { useMapInitialization } from "@/lib/hooks";
 
 interface MapProps {
@@ -14,9 +15,17 @@ export const Map: React.FC<MapProps> = ({
   handleMapDrop,
   handleMapDragOver,
 }) => {
+  // Initialize map
+  const { mapContainerRef, initializeMap, cleanup } = useMapInitialization();
+
   // Get context values
-  const { mapContainerRef } = useMapContext();
   const { helpOpen, setHelpOpen } = useUIContext();
+
+  // Initialize map on mount
+  useEffect(() => {
+    initializeMap();
+    return cleanup;
+  }, [initializeMap, cleanup]);
   return (
     <>
       <div className="flex-1">

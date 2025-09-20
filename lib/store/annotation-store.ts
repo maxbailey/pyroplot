@@ -405,11 +405,9 @@ export const annotationSelectors = {
     Object.keys(state.measurements).length > 0 ||
     Object.keys(state.restrictedAreas).length > 0,
 
-  // Counter selectors
-  counters: (state: AnnotationStore) => ({
-    firework: state.fireworkCounter,
-    audience: state.audienceCounter,
-    measurement: state.measurementCounter,
-    restricted: state.restrictedCounter,
-  }),
+  // Individual counter selectors (memoized)
+  fireworkCounter: (state: AnnotationStore) => state.fireworkCounter,
+  audienceCounter: (state: AnnotationStore) => state.audienceCounter,
+  measurementCounter: (state: AnnotationStore) => state.measurementCounter,
+  restrictedCounter: (state: AnnotationStore) => state.restrictedCounter,
 };
