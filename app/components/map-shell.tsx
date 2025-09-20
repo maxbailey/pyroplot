@@ -8,12 +8,14 @@ import {
   useAnnotationContext,
   useSettingsContext,
 } from "@/lib/contexts";
+import { useSettingsStore } from "@/lib/store";
 import {
   createCircleFeature,
   createRectangleFeature,
   formatLengthNoSpace,
   formatDistanceWithSpace,
 } from "@/lib/utils/map-utils";
+import { refreshAllAnnotationTexts } from "@/lib/utils/annotation-utils";
 import { feetToMeters } from "@/components/pdf-generator/utils";
 import {
   ANNOTATION_PALETTE,
@@ -53,8 +55,8 @@ export function MapShell() {
     removeCustomAnnotation,
   } = useAnnotationContext();
 
-  // Get settings context for measurement unit
-  const { measurementUnit } = useSettingsContext();
+  // Get settings context for measurement unit and safety distance
+  const { measurementUnit, safetyDistance } = useSettingsContext();
 
   // Create refs for annotation management (these are still needed for some operations)
   const annotationsRef = useRef<Record<string, AnnotationRecord>>({});
@@ -64,6 +66,22 @@ export function MapShell() {
 
   // Note: We don't sync refs with context state because we manage them locally
   // The refs are used for local operations and contain additional data not in the store
+
+  // Watch for settings changes and refresh all annotation texts
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    // Refresh all annotation texts when settings change
+    refreshAllAnnotationTexts(
+      mapInstance,
+      annotationsRef.current,
+      audienceAreasRef.current,
+      measurementsRef.current,
+      restrictedAreasRef.current,
+      safetyDistance,
+      measurementUnit
+    );
+  }, [mapInstance, safetyDistance, measurementUnit]);
 
   // Map drop handler
   const handleMapDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -385,7 +403,7 @@ export function MapShell() {
         console.log("Created audience area:", id);
       } else if (item.key === "firework") {
         // Create firework circle
-        const radiusMeters = feetToMeters(50); // 50ft radius
+        const radiusMeters = feetToMeters(50 * safetyDistance); // 50ft radius * safety distance
         const circleFeature = createCircleFeature(
           lngLat.lng,
           lngLat.lat,
@@ -457,7 +475,7 @@ export function MapShell() {
 
         const size = document.createElement("div");
         size.className = "text-muted-foreground";
-        const radiusFeet = Math.round(50 * 1); // 50ft radius (inches * safety distance)
+        const radiusFeet = Math.round(50 * safetyDistance); // 50ft radius * safety distance
         const radiusText =
           measurementUnit === "feet"
             ? `${radiusFeet} ft radius`
@@ -497,7 +515,12 @@ export function MapShell() {
         // Add drag handler to update circle position
         const updateCircle = () => {
           const pos = marker.getLngLat();
-          const currentRadiusMeters = feetToMeters(50); // 50ft radius
+          // Always use current global state, not the value from when annotation was created
+          const currentSafetyDistance =
+            useSettingsStore.getState().safetyDistance;
+          const currentMeasurementUnit =
+            useSettingsStore.getState().measurementUnit;
+          const currentRadiusMeters = feetToMeters(50 * currentSafetyDistance); // 50ft radius * current safety distance
           const updated = createCircleFeature(
             pos.lng,
             pos.lat,
@@ -509,10 +532,10 @@ export function MapShell() {
             features: [updated],
           });
 
-          // Update radius text
-          const radiusFeet = Math.round(50 * 1); // 50ft radius
+          // Update radius text using current global state
+          const radiusFeet = Math.round(50 * currentSafetyDistance); // 50ft radius * current safety distance
           const radiusText =
-            measurementUnit === "feet"
+            currentMeasurementUnit === "feet"
               ? `${radiusFeet} ft radius`
               : `${Math.round(feetToMeters(radiusFeet))} m radius`;
           size.textContent = radiusText;
@@ -526,7 +549,7 @@ export function MapShell() {
         item.key.startsWith("shell-")
       ) {
         // Create firework circle for bore/shell types
-        const radiusMeters = feetToMeters(item.inches * 100); // Convert inches to feet, then to meters
+        const radiusMeters = feetToMeters(item.inches * safetyDistance); // Convert inches to feet * safety distance, then to meters
         const circleFeature = createCircleFeature(
           lngLat.lng,
           lngLat.lat,
@@ -598,7 +621,7 @@ export function MapShell() {
 
         const size = document.createElement("div");
         size.className = "text-muted-foreground";
-        const radiusFeet = Math.round(item.inches * 100); // Convert inches to feet
+        const radiusFeet = Math.round(item.inches * safetyDistance); // Convert inches to feet * safety distance
         const radiusText =
           measurementUnit === "feet"
             ? `${radiusFeet} ft radius`
@@ -638,7 +661,14 @@ export function MapShell() {
         // Add drag handler to update circle position
         const updateCircle = () => {
           const pos = marker.getLngLat();
-          const currentRadiusMeters = feetToMeters(item.inches * 100);
+          // Always use current global state, not the value from when annotation was created
+          const currentSafetyDistance =
+            useSettingsStore.getState().safetyDistance;
+          const currentMeasurementUnit =
+            useSettingsStore.getState().measurementUnit;
+          const currentRadiusMeters = feetToMeters(
+            item.inches * currentSafetyDistance
+          );
           const updated = createCircleFeature(
             pos.lng,
             pos.lat,
@@ -650,10 +680,10 @@ export function MapShell() {
             features: [updated],
           });
 
-          // Update radius text
-          const radiusFeet = Math.round(item.inches * 100); // Convert inches to feet
+          // Update radius text using current global state
+          const radiusFeet = Math.round(item.inches * currentSafetyDistance); // Convert inches to feet * current safety distance
           const radiusText =
-            measurementUnit === "feet"
+            currentMeasurementUnit === "feet"
               ? `${radiusFeet} ft radius`
               : `${Math.round(feetToMeters(radiusFeet))} m radius`;
           size.textContent = radiusText;
