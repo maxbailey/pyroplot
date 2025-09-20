@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import mapboxgl from "mapbox-gl";
 import { useAnnotationContext, useUIContext } from "@/lib/contexts";
+import type { AnnotationRecord } from "@/lib/types";
 
 export const useCustomAnnotations = () => {
   const { annotations, findAnnotationById, removeCustomAnnotation } =
@@ -12,7 +13,7 @@ export const useCustomAnnotations = () => {
       id: string,
       updates: { label: string; color: string },
       mapRef: React.RefObject<mapboxgl.Map | null>,
-      annotationsRef: React.RefObject<Record<string, any>>
+      annotationsRef: React.RefObject<Record<string, AnnotationRecord>>
     ) => {
       if (!annotationsRef.current?.[id] || !mapRef.current) return;
 
